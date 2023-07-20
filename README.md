@@ -1,5 +1,7 @@
 # Mailer
-Mailer Class
+
+This is a simple library for sending mail with SMTP consisting of a single class.
+
 
 [![Latest Stable Version](http://poser.pugx.org/initphp/mailer/v)](https://packagist.org/packages/initphp/mailer) [![Total Downloads](http://poser.pugx.org/initphp/mailer/downloads)](https://packagist.org/packages/initphp/mailer) [![Latest Unstable Version](http://poser.pugx.org/initphp/mailer/v/unstable)](https://packagist.org/packages/initphp/mailer) [![License](http://poser.pugx.org/initphp/mailer/license)](https://packagist.org/packages/initphp/mailer) [![PHP Version Require](http://poser.pugx.org/initphp/mailer/require/php)](https://packagist.org/packages/initphp/mailer)
 
