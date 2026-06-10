@@ -1,13 +1,18 @@
 {
     "name": "initphp/mailer",
-    "description": "InitPHP Mailer Library",
+    "description": "Send e-mail through the native mail() function, a sendmail binary or SMTP with attachments, inline images and MIME multipart bodies.",
     "type": "library",
     "license": "MIT",
-    "autoload": {
-        "files": [
-            "src/Mailer.php"
-        ]
-    },
+    "keywords": [
+        "mailer",
+        "email",
+        "mail",
+        "smtp",
+        "sendmail",
+        "mime",
+        "attachment",
+        "initphp"
+    ],
     "authors": [
         {
             "name": "Muhammet ŞAFAK",
@@ -16,11 +21,55 @@
             "homepage": "https://www.muhammetsafak.com.tr"
         }
     ],
-    "minimum-stability": "stable",
+    "support": {
+        "issues": "https://github.com/InitPHP/Mailer/issues",
+        "source": "https://github.com/InitPHP/Mailer",
+        "docs": "https://github.com/InitPHP/Mailer/tree/main/docs"
+    },
     "require": {
-        "php": ">=7.4",
+        "php": ">=8.1",
         "ext-mbstring": "*",
         "ext-iconv": "*",
         "ext-fileinfo": "*"
-    }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "phpstan/phpstan": "^1.12 || ^2.1",
+        "friendsofphp/php-cs-fixer": "^3.65"
+    },
+    "autoload": {
+        "psr-4": {
+            "InitPHP\\Mailer\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "InitPHP\\Mailer\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html build/coverage",
+        "stan": "phpstan analyse --no-progress",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "cs-fix": "php-cs-fixer fix",
+        "ci": [
+            "@cs-check",
+            "@stan",
+            "@test"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit test suite.",
+        "test-coverage": "Run PHPUnit and produce an HTML coverage report under build/coverage.",
+        "stan": "Run PHPStan at the level configured in phpstan.neon.dist.",
+        "cs-check": "Report any PHP-CS-Fixer violations without modifying files.",
+        "cs-fix": "Apply PHP-CS-Fixer fixes in-place.",
+        "ci": "Run the full CI bundle locally: cs-check, stan, test."
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
 }

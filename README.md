@@ -1,205 +1,159 @@
-# Mailer
+# InitPHP Mailer
 
-This is a simple library for sending mail with SMTP consisting of a single class.
+A small, dependency-free PHP mailer. Compose a message with a fluent API and
+send it through PHP's native `mail()`, a local `sendmail` binary, or SMTP — with
+attachments, inline images, HTML + plain-text multipart bodies and RFC-compliant
+header encoding.
 
+[![Latest Stable Version](http://poser.pugx.org/initphp/mailer/v)](https://packagist.org/packages/initphp/mailer) [![Total Downloads](http://poser.pugx.org/initphp/mailer/downloads)](https://packagist.org/packages/initphp/mailer) [![License](http://poser.pugx.org/initphp/mailer/license)](https://packagist.org/packages/initphp/mailer) [![PHP Version Require](http://poser.pugx.org/initphp/mailer/require/php)](https://packagist.org/packages/initphp/mailer)
 
-[![Latest Stable Version](http://poser.pugx.org/initphp/mailer/v)](https://packagist.org/packages/initphp/mailer) [![Total Downloads](http://poser.pugx.org/initphp/mailer/downloads)](https://packagist.org/packages/initphp/mailer) [![Latest Unstable Version](http://poser.pugx.org/initphp/mailer/v/unstable)](https://packagist.org/packages/initphp/mailer) [![License](http://poser.pugx.org/initphp/mailer/license)](https://packagist.org/packages/initphp/mailer) [![PHP Version Require](http://poser.pugx.org/initphp/mailer/require/php)](https://packagist.org/packages/initphp/mailer)
-
-
-## Instalation
-
-```
-composer require initphp/mailer
-```
+> **Upgrading from 1.x?** Version 2.0 keeps the same fluent API but raises the
+> PHP requirement, encapsulates state and replaces `bool` return values with
+> exceptions. See [UPGRADE-2.0.md](UPGRADE-2.0.md).
 
 ## Requirements
 
-- PHP 7.4 or higher
-- MBString Extension
-- Iconv Extension
-- FileInfo Extension
+- PHP 8.1 or higher
+- ext-mbstring, ext-iconv, ext-fileinfo
 
-## Usage
+## Installation
 
-```php
-$config = [
-    'mailType'  => 'text' // or 'html'
-    'protocol'  => 'smtp' // or 'mail' or 'sendmail'
-    'SMTPAuth'  => true,
-    'SMTPHost'  => 'smtp.gmail.com',
-    'SMTPUser'  => 'your-mail@gmail.com',
-    'SMTPPass'  => 'YourMailPassword',
-    'SMTPPort'  => 587
-];
-$mailer = \InitPHP\Mailer\Mailer::newInstance($config);
-
-$mailer->setFrom('info@muhammetsafak.com.tr', 'Muhammet Şafak');
-//$mailer->setTo('example@example.com');
-//$mailer->setCC('john@hotmail.com');
-//$mailer->setBCC('testing@gmail.com');
-$mailer->setSubject('Mail Subject');
-$mailer->setMessage('Mail Body Message');
-$mailer->send();
+```bash
+composer require initphp/mailer
 ```
 
-## Methods
+## Quick start
 
-#### `newInstance()`
-
-Creates a new mailer object and returns it.
+### SMTP
 
 ```php
-public static function newInstance(?array $config = null): \InitPHP\Mailer\Mailer
+use InitPHP\Mailer\Mailer;
+use InitPHP\Mailer\Exception\MailerException;
+
+$mailer = Mailer::newInstance([
+    'protocol'   => 'smtp',
+    'SMTPHost'   => 'smtp.example.com',
+    'SMTPUser'   => 'you@example.com',
+    'SMTPPass'   => 'your-password',
+    'SMTPPort'   => 587,
+    'SMTPCrypto' => 'tls',
+]);
+
+try {
+    $mailer->setFrom('you@example.com', 'Your Name')
+        ->setTo('recipient@example.com')
+        ->setSubject('Hello from InitPHP Mailer')
+        ->setMessage('This is a plain-text message.')
+        ->send();
+} catch (MailerException $e) {
+    // $e->getMessage(); for SMTP failures $e->getCode() holds the reply code.
+}
 ```
 
-### `clear()`
+### Native `mail()`
 
 ```php
-public function clear(bool $clearAttachments = false): self
+$mailer = Mailer::newInstance(); // protocol defaults to "mail"
+
+$mailer->setFrom('you@example.com', 'Your Name')
+    ->setTo('recipient@example.com')
+    ->setSubject('Hello')
+    ->setMessage('Plain-text body')
+    ->send();
 ```
 
-### `setHeader()`
+### HTML with a plain-text alternative
 
 ```php
-public function setHeader(string $header, string $value): self
+$mailer->setMailType('html')
+    ->setFrom('you@example.com', 'Your Name')
+    ->setTo('recipient@example.com')
+    ->setSubject('Newsletter')
+    ->setMessage('<h1>Hello</h1><p>This is an <strong>HTML</strong> message.</p>')
+    ->setAltMessage('Hello — this is the plain-text fallback.')
+    ->send();
 ```
 
-### `setFrom()`
+### Attachments and inline images
 
 ```php
-public function setFrom(string $from, string $name = '', ?string $returnPath = null): self
+$mailer->setMailType('html')
+    ->setFrom('you@example.com')
+    ->setTo('recipient@example.com')
+    ->setSubject('Invoice')
+    ->attach('/path/to/invoice.pdf');             // a file on disk
+
+// In-memory / generated content (no temp file needed):
+$pdf = $generator->render();
+$mailer->attachContent($pdf, 'invoice.pdf', 'attachment', 'application/pdf');
+
+// Inline image referenced from the HTML with cid:
+$mailer->attach('/path/to/logo.png', 'inline');
+$cid = $mailer->setAttachmentCID('/path/to/logo.png');
+$mailer->setMessage('<img src="cid:' . $cid . '"> Welcome!')
+    ->send();
 ```
 
-### `setReplyTo()`
+## Error handling
+
+`send()` returns `void` and throws on failure. Invalid input is rejected as soon
+as it is supplied (fail-fast), not deferred to `send()`.
+
+| Exception | When |
+| --------- | ---- |
+| `InvalidAddressException` | A sender/recipient address fails validation. |
+| `ConfigurationException`  | A required value is missing (no sender, no recipient, empty SMTP host). |
+| `AttachmentException`     | An attachment cannot be read or its type detected. |
+| `TransportException`      | Delivery failed (the SMTP reply code is in `getCode()`). |
+
+All extend `InitPHP\Mailer\Exception\MailerException`, so a single `catch` can
+handle any failure.
+
+## Facade
+
+For quick, one-off usage there is a static facade backed by a shared instance:
 
 ```php
-public function setReplyTo(string $replyTo, string $name = ''): self
+use InitPHP\Mailer\Facade\Mailer;
+
+Mailer::setFrom('you@example.com')
+    ->setTo('recipient@example.com')
+    ->setSubject('Hi')
+    ->setMessage('Body')
+    ->send();
 ```
 
-### `setTo()`
+To configure the shared instance, build a `Mailer` and register it:
 
 ```php
-public function setTo(string|array $to): self
+use InitPHP\Mailer\Mailer as MailerInstance;
+use InitPHP\Mailer\Facade\Mailer;
+
+Mailer::setInstance(MailerInstance::newInstance(['protocol' => 'smtp', /* … */]));
 ```
 
-### `setCC()`
+## Documentation
 
-```php
-public function setCC(string $cc): self
+Full developer documentation lives in [`docs/`](docs/README.md):
+
+- [Getting started](docs/getting-started.md)
+- [Configuration](docs/configuration.md)
+- [Sending mail](docs/sending-mail.md)
+- [Attachments](docs/attachments.md)
+- [SMTP transport](docs/smtp-transport.md)
+- [Encoding & headers](docs/encoding-and-headers.md)
+- [Exceptions](docs/exceptions.md)
+- [Facade](docs/facade.md)
+
+## Contributing
+
+Bug reports and pull requests are welcome on the
+[issue tracker](https://github.com/InitPHP/Mailer/issues). New code should come
+with tests; run the full check bundle before opening a PR:
+
+```bash
+composer ci   # php-cs-fixer (dry-run) + phpstan + phpunit
 ```
-
-### `setBCC()`
-
-```php
-public function setBCC(string $bcc, ?int $limit = null): self
-```
-
-### `setSubject()`
-
-```php
-public function setSubject(string $subject): self
-```
-
-### `setMessage()`
-
-```php
-public function setMessage(string $body): self
-```
-
-### `setAttachmentCID()`
-
-```php
-public function setAttachmentCID(string $fileName): false|string
-```
-
-### `setAltMessage()`
-
-```php
-public function setAltMessage(string $str): self
-```
-
-### `setMailType()`
-
-```php
-public function setMailType(string $type = 'text'): self
-```
-
-- `$type` : `text` or `html`
-
-### `setWordWrap()`
-
-```php
-public function setWordWrap(bool $wordWrap = true): self
-```
-
-### `setProtocol()`
-
-```php
-public function setProtocol(string $protocol = 'mail'): self
-```
-
-- `$protocol` : `mail`, `sendmail` or `smtp`
-
-### `setPriority()`
-
-```php
-public function setPriority(int $n = 3): self
-```
-
-- `$n` : An integer between 1 and 5 inclusive.
-
-### `setNewline()`
-
-```php
-public function setNewline(string $newLine = \PHP_EOL): self
-```
-
-### `setCRLF()`
-
-```php
-public function setCRLF(string $CRLF = \PHP_EOL): self
-```
-
-### `attach()`
-
-```php
-public function attach(string|resource $file, string $disposition = '', ?string $newName = null, ?string $mime = null): false|self
-```
-
-### `send()`
-
-```php
-public function send(bool $autoClear = true): bool
-```
-
-### `printDebugger()`
-
-```php
-public function printDebugger(array $include = ['headers', 'subject', 'body']): string
-```
-
-## Getting Help
-
-If you have questions, concerns, bug reports, etc, please file an issue in this repository's Issue Tracker.
-
-## Getting Involved
-
-> All contributions to this project will be published under the MIT License. By submitting a pull request or filing a bug, issue, or feature request, you are agreeing to comply with this waiver of copyright interest.
-
-There are two primary ways to help:
-
-- Using the issue tracker, and
-- Changing the code-base.
-    
-### Using the issue tracker
-
-Use the issue tracker to suggest feature requests, report bugs, and ask questions. This is also a great way to connect with the developers of the project as well as others who are interested in this solution.
-
-Use the issue tracker to find ways to contribute. Find a bug or a feature, mention in the issue that you will take on that effort, then follow the Changing the code-base guidance below.
-
-### Changing the code-base
-
-Generally speaking, you should fork this repository, make changes in your own fork, and then submit a pull request. All new code should have associated unit tests that validate implemented features and the presence or lack of defects. Additionally, the code should follow any stylistic and architectural guidelines prescribed by the project. In the absence of such guidelines, mimic the styles and patterns in the existing code-base.
 
 ## Credits
 
@@ -207,4 +161,4 @@ Generally speaking, you should fork this repository, make changes in your own fo
 
 ## License
 
-Copyright &copy; 2022 [MIT License](./LICENSE)
+Released under the [MIT License](./LICENSE). Copyright © 2022 InitPHP.

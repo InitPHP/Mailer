@@ -1,0 +1,10 @@
+parameters:
+    level: max
+    # Analyse against a fixed PHP version so results do not depend on the
+    # contributor's local runtime. The library itself requires PHP 8.1+.
+    phpVersion: 80100
+    paths:
+        - src
+        - tests
+    tmpDir: build/phpstan
+    treatPhpDocTypesAsCertain: false
