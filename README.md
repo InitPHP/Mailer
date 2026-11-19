@@ -5,7 +5,7 @@ send it through PHP's native `mail()`, a local `sendmail` binary, or SMTP — wi
 attachments, inline images, HTML + plain-text multipart bodies and RFC-compliant
 header encoding.
 
-[![Designed & Maintained with Tan](https://www.muhammetsafak.com.tr/badges/designed-maintained-with-tan.svg)](https://www.muhammetsafak.com.tr/en/tan/)
+[![Designed & Maintained with Tan](https://muhammetsafak.com/badges/designed-maintained-with-tan.svg)](https://muhammetsafak.com/tan/)
 [![Latest Stable Version](http://poser.pugx.org/initphp/mailer/v)](https://packagist.org/packages/initphp/mailer) [![Total Downloads](http://poser.pugx.org/initphp/mailer/downloads)](https://packagist.org/packages/initphp/mailer) [![License](http://poser.pugx.org/initphp/mailer/license)](https://packagist.org/packages/initphp/mailer) [![PHP Version Require](http://poser.pugx.org/initphp/mailer/require/php)](https://packagist.org/packages/initphp/mailer)
 
 > **Upgrading from 1.x?** Version 2.0 keeps the same fluent API but raises the
@@ -158,7 +158,7 @@ composer ci   # php-cs-fixer (dry-run) + phpstan + phpunit
 
 ## Credits
 
-- [Muhammet ŞAFAK](https://www.muhammetsafak.com.tr) <<info@muhammetsafak.com.tr>>
+- [Muhammet ŞAFAK](https://muhammetsafak.com) <<info@muhammetsafak.com>>
 
 ## License
 
