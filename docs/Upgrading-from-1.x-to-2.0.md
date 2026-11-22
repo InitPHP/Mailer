@@ -7,7 +7,7 @@ to adapt.
 
 ## 1. PHP 8.2 is required
 
-The minimum version was raised from 7.4 to **8.1** in 2.0.0 and to **8.2** in the release after it. Run PHP **8.2** or newer.
+The minimum version was raised from 7.4 to **8.1** in 2.0.0 and to **8.2** in 3.0.0. Run PHP **8.2** or newer.
 
 ## 2. The facade is autoloaded
 
