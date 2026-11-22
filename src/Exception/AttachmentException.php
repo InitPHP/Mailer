@@ -19,6 +19,4 @@ namespace InitPHP\Mailer\Exception;
  * Thrown when an attachment cannot be read from disk or its MIME type cannot
  * be detected.
  */
-final class AttachmentException extends MailerException
-{
-}
+final class AttachmentException extends MailerException {}

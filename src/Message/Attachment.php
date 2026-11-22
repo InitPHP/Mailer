@@ -51,8 +51,7 @@ final class Attachment
         private readonly string $disposition,
         private readonly string $mimeType,
         private readonly string $content,
-    ) {
-    }
+    ) {}
 
     /**
      * Builds an attachment from a file on disk.

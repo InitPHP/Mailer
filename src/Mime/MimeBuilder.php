@@ -55,7 +55,7 @@ final class MimeBuilder
         private readonly bool $sendMultipart,
         ?callable $boundaryFactory = null,
     ) {
-        $this->boundaryFactory = $boundaryFactory ?? static fn (string $prefix): string => uniqid($prefix, true);
+        $this->boundaryFactory = $boundaryFactory ?? static fn(string $prefix): string => uniqid($prefix, true);
     }
 
     /**

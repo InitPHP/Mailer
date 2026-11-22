@@ -55,8 +55,7 @@ final class SmtpTransport implements TransportInterface
         private readonly bool $extendedHello,
         private readonly string $hostname,
         private readonly string $newline,
-    ) {
-    }
+    ) {}
 
     public function send(PreparedEmail $email): void
     {

@@ -6,6 +6,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Requires PHP `^8.2`.** Support for PHP 8.1 is dropped; CI now runs PHP 8.2, 8.3, 8.4 and 8.5.
+- **Coding standard moved to PER-CS** through the shared `.php-cs-fixer.dist.php`; the whole code base was reformatted.
+
+## [2.0.0] - 2026-06-10
+
 A correctness- and quality-focused overhaul: real bug fixes, a decomposed
 SOLID architecture, an exception-based error model, full unit tests, static
 analysis, CI and documentation. See [UPGRADE-2.0.md](UPGRADE-2.0.md) for the
@@ -79,4 +86,5 @@ breaking changes and how to migrate.
   case-insensitive.
 - The archive returned after a send no longer contains SMTP credentials.
 
-[Unreleased]: https://github.com/InitPHP/Mailer/compare/v1.1...HEAD
+[Unreleased]: https://github.com/InitPHP/Mailer/compare/2.0.0...HEAD
+[2.0.0]: https://github.com/InitPHP/Mailer/compare/1.1...2.0.0

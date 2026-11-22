@@ -14,7 +14,7 @@ header encoding.
 
 ## Requirements
 
-- PHP 8.1 or higher
+- PHP 8.2 or higher
 - ext-mbstring, ext-iconv, ext-fileinfo
 
 ## Installation

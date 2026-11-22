@@ -21,6 +21,4 @@ namespace InitPHP\Mailer\Exception;
  * or `mail()` returning false. For SMTP failures the exception code carries the
  * server reply code when one is available.
  */
-final class TransportException extends MailerException
-{
-}
+final class TransportException extends MailerException {}

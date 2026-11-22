@@ -29,8 +29,7 @@ final class Address
     public function __construct(
         private readonly string $email,
         private readonly string $name = '',
-    ) {
-    }
+    ) {}
 
     /**
      * Parses `"Name" <email>`, `<email>` or `email` into an Address. A display
