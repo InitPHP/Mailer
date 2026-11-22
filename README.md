@@ -135,16 +135,25 @@ Mailer::setInstance(MailerInstance::newInstance(['protocol' => 'smtp', /* … */
 
 ## Documentation
 
-Full developer documentation lives in [`docs/`](docs/README.md):
+Full developer documentation lives in [`docs/`](docs/Home.md):
 
-- [Getting started](docs/getting-started.md)
-- [Configuration](docs/configuration.md)
-- [Sending mail](docs/sending-mail.md)
-- [Attachments](docs/attachments.md)
-- [SMTP transport](docs/smtp-transport.md)
-- [Encoding & headers](docs/encoding-and-headers.md)
-- [Exceptions](docs/exceptions.md)
-- [Facade](docs/facade.md)
+- [Installation](docs/Installation.md)
+- [Quick Start](docs/Quick-Start.md)
+- [Configuration](docs/Configuration.md)
+- [Transports](docs/Transports.md)
+- [SMTP Transport](docs/SMTP-Transport.md)
+- [Sending Mail](docs/Sending-Mail.md)
+- [HTML Messages](docs/HTML-Messages.md)
+- [Attachments](docs/Attachments.md)
+- [Encoding & Headers](docs/Encoding-and-Headers.md)
+- [Error Handling](docs/Error-Handling.md)
+- [Testing](docs/Testing.md)
+- [API Reference](docs/API-Reference.md)
+- [Facade](docs/Facade.md)
+- [FAQ](docs/FAQ.md)
+- [Upgrading 1.x → 2.0](docs/Upgrading-from-1.x-to-2.0.md)
+
+The same pages are published as the [wiki](https://github.com/InitPHP/Mailer/wiki).
 
 ## Contributing
 
