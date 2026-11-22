@@ -4,7 +4,7 @@
 
 | Requirement | Notes |
 | --- | --- |
-| PHP **8.2** or newer | The library is fully typed and uses 8.2 language features. |
+| PHP **8.2** or newer | The library is fully typed; 8.2 is the supported minimum. |
 | `ext-mbstring` | Byte-accurate string handling for encoding and line wrapping. |
 | `ext-iconv` | RFC 2047 header (Q) encoding. |
 | `ext-fileinfo` | MIME-type detection for attachments. |
