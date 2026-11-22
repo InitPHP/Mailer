@@ -48,8 +48,7 @@ final class QuotedPrintableEncoder
 
     public function __construct(
         private readonly string $crlf,
-    ) {
-    }
+    ) {}
 
     public function encode(string $str): string
     {

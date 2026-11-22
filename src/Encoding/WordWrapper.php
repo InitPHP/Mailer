@@ -34,8 +34,7 @@ final class WordWrapper
     public function __construct(
         private readonly int $wrapChars,
         private readonly string $newline,
-    ) {
-    }
+    ) {}
 
     /**
      * @param int|null $chars Column to wrap at, or null to use the configured width.

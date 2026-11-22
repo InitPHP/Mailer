@@ -37,8 +37,7 @@ final class QEncoder
     public function __construct(
         private readonly string $charset,
         private readonly string $crlf,
-    ) {
-    }
+    ) {}
 
     public function encode(string $str): string
     {

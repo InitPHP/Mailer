@@ -14,6 +14,14 @@ breaking changes and how to migrate.
 ### Requirements
 
 - **Raised the minimum PHP version to 8.1** (was 7.4).
+- **Raised the minimum PHP version again to `^8.2`** (breaking): PHP 8.1 is no
+  longer supported, and CI now runs PHP 8.2, 8.3, 8.4 and 8.5.
+
+### Code style
+
+- **Coding standard moved to PER-CS** through the shared
+  `.php-cs-fixer.dist.php` (breaking for contributors); the whole code base was
+  reformatted.
 
 ### Added
 

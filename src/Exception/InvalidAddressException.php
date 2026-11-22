@@ -19,6 +19,4 @@ namespace InitPHP\Mailer\Exception;
  * Thrown when an e-mail address fails validation while address validation is
  * enabled.
  */
-final class InvalidAddressException extends MailerException
-{
-}
+final class InvalidAddressException extends MailerException {}

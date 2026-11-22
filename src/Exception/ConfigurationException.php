@@ -20,6 +20,4 @@ namespace InitPHP\Mailer\Exception;
  * required configuration is missing — for example no sender, no recipient, or
  * an empty SMTP host.
  */
-final class ConfigurationException extends MailerException
-{
-}
+final class ConfigurationException extends MailerException {}

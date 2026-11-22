@@ -45,7 +45,7 @@ final class MailTransport implements TransportInterface
         private readonly EmailValidator $validator,
         ?callable $mailFunction = null,
     ) {
-        $this->mailFunction = $mailFunction ?? static fn (
+        $this->mailFunction = $mailFunction ?? static fn(
             string $to,
             string $subject,
             string $message,

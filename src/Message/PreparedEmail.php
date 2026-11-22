@@ -42,6 +42,5 @@ final class PreparedEmail
         public readonly string $contentHeaders,
         public readonly string $body,
         public readonly string $newline,
-    ) {
-    }
+    ) {}
 }

@@ -21,6 +21,4 @@ use RuntimeException;
  * Base type for every exception thrown by the library. Catch this to handle
  * any mailer failure regardless of its specific cause.
  */
-class MailerException extends RuntimeException
-{
-}
+class MailerException extends RuntimeException {}
