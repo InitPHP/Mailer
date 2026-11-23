@@ -58,6 +58,21 @@ rejects, disable validation:
 $mailer = Mailer::newInstance(['validate' => false]);
 ```
 
+> **Security:** `validate => false` removes the only check on addresses. The
+> mailer only trims whitespace from the ends of an address, so a CR or LF inside
+> one (`user@example.com\r\nBcc: attacker@example.test`) is written into the
+> `From` / `Cc` header or the SMTP command as given, which lets a request-supplied
+> address add headers or recipients. If you turn validation off, reject line
+> breaks yourself before the address reaches the mailer:
+>
+> ```php
+> if (preg_match('/[\r\n]/', $address) === 1) {
+>     throw new \InvalidArgumentException('Invalid address.');
+> }
+> ```
+>
+> Never turn validation off for addresses that come from user input.
+
 ### Non-Latin subjects or names look like `=?UTF-8?Q?...?=`.
 
 That's correct — it is RFC 2047 encoding. Mail clients decode it back to the
