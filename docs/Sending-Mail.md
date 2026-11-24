@@ -70,8 +70,11 @@ try {
 }
 ```
 
-Disable validation with `'validate' => false` if you need to accept addresses
-the PHP filter rejects.
+Disable validation with `'validate' => false` only if you need to accept
+addresses the PHP filter rejects, and only for addresses you control. The
+mailer then no longer rejects a CR/LF inside an address, so a request-supplied
+address could inject headers or recipients; reject line breaks yourself — see
+[Error Handling](Error-Handling.md#fail-fast-on-bad-input).
 
 ## Subject and body
 

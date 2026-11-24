@@ -34,7 +34,7 @@ $mailer = Mailer::newInstance([
 | `priority` | int | `3` | `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3. |
 | `altMessage` | string | `''` | Plain-text alternative for HTML messages. |
 | `userAgent` | string | `'InitPHP Mailer'` | `User-Agent` / `X-Mailer` header value. |
-| `validate` | bool | `true` | Validate addresses as they are added. |
+| `validate` | bool | `true` | Validate addresses as they are added. Turning it off also removes the CR/LF check — see [Error Handling](Error-Handling.md). |
 
 ## Transport selection
 
