@@ -75,8 +75,11 @@ final class SmtpTransport implements TransportInterface
             throw new TransportException('The SMTP client hostname must not contain a line break or a NUL character.');
         }
 
-        $headers = HeaderRenderer::without($email->headers, ['To', 'Subject']);
-        $headers['To'] = implode(', ', $email->to);
+        // A custom To only gives way when the library writes one.
+        $headers = HeaderRenderer::without($email->headers, $email->to === [] ? ['Subject'] : ['To', 'Subject']);
+        if ($email->to !== []) {
+            $headers['To'] = implode(', ', $email->to);
+        }
         $headers['Subject'] = $email->subject;
         $message = HeaderRenderer::render($headers, $this->newline)
             . $email->contentHeaders . $this->newline . $this->newline . $email->body;

@@ -128,13 +128,20 @@ If the library writes a header itself for this message, its value wins over a
 custom header of the same name, whatever the case of the name: a custom `from`
 is dropped, not added next to the real `From`. That covers From, Reply-To,
 Return-Path, Date, Message-ID, MIME-Version, User-Agent, X-Mailer, X-Sender,
-X-Priority, Content-Type and Content-Transfer-Encoding; `To` and `Subject`; `Cc`
-when you called `setCC()`; and `Bcc` when you called `setBCC()` (sendmail and
-`mail()` write it). A header the library does **not** write is passed through as
-you set it: `setHeader('Cc', …)` with no `setCC()` adds that header. Use
-`setTo()`, `setCC()` and `setBCC()` for recipients — a `Cc` or `Bcc` header set by
-hand is not an envelope recipient, and the SMTP transport never writes a `Bcc`
-header of its own:
+X-Priority, Content-Type and Content-Transfer-Encoding; `Subject`; `To` when you
+called `setTo()`; `Cc` when you called `setCC()`; and `Bcc` when you called
+`setBCC()` (sendmail and `mail()` write it; SMTP never does). A header the
+library does **not** write is passed through as you set it: `setHeader('Cc', …)`
+with no `setCC()`, or `setHeader('To', 'undisclosed-recipients:;')` on a message
+that only has BCC recipients, adds that header.
+
+Use `setTo()`, `setCC()` and `setBCC()` for recipients, and know what a header
+set by hand does on each transport. With `mail()` and `sendmail` the MTA reads
+the recipients from the headers, so a `Cc` or `Bcc` header set by hand **does**
+add a recipient (and a `Bcc` header set by hand on `sendmail` is removed from the
+delivered copy like any other `Bcc`). With `smtp` only the `RCPT TO` list counts:
+a hand-set `Cc` or `Bcc` header adds no recipient, and a hand-set `Bcc` stays
+**visible** in the message every recipient receives:
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');

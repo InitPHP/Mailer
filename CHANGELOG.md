@@ -21,9 +21,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Attachment names, dispositions and MIME types containing a CR, LF or NUL throw
   an `AttachmentException`; the `userAgent` and `charset` options containing one
   throw a `ConfigurationException`.
-- `SmtpTransport` refuses a recipient or an SMTP command containing a CR, LF or
-  NUL (`InvalidAddressException` / `TransportException`) instead of writing it to
-  the socket.
+- `SmtpTransport` refuses a recipient containing a CR, LF, NUL, `<` or `>`
+  (`InvalidAddressException`) or a client hostname containing a CR, LF or NUL
+  (`TransportException`) before it connects, instead of writing it to the socket.
 
 ### Fixed
 
@@ -46,7 +46,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   custom one of the same name whatever the case (a custom `from`, or `bcc` next
   to a real BCC list, is dropped instead of added as a second header). A header
   the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
-  without `setCC()`/`setBCC()` still adds that header. A name with a space, a
+  without `setCC()`/`setBCC()`/`setTo()` still adds that header. (3.0.0 lost a
+  custom `To` on sendmail and SMTP when the message had no To recipient; it is now
+  kept there too.) A name with a space, a
   colon or any non-printable or non-ASCII character throws a `MailerException`.
 - `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
   dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.

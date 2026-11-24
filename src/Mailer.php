@@ -222,8 +222,8 @@ class Mailer
      * Reply-To, Date, Message-ID, Cc when there are CC recipients, To, Subject,
      * Bcc when there are BCC recipients, …) takes precedence over a custom header
      * of the same name, whatever the case; use setCC() and setBCC() for
-     * recipients. A custom `Cc`, `Bcc`, `To` or `Subject` the library does not
-     * write is passed through unchanged.
+     * recipients. A custom `Cc`, `Bcc` or `To` the library does not write (no CC,
+     * BCC or To recipients) is passed through unchanged.
      *
      * @throws MailerException When the header name is not a valid field name.
      */
@@ -691,6 +691,10 @@ class Mailer
         // A custom header the library also writes loses, whatever the case of
         // its name. One the library does not write for this message is kept.
         $managed = HeaderRenderer::names($headers);
+        if ($this->to !== []) {
+            // The transport writes To (or passes it to mail()) for the whole message.
+            $managed['to'] = true;
+        }
         $custom = [];
         foreach ($this->customHeaders as $name => $value) {
             $key = strtolower(trim((string) $name));

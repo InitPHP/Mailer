@@ -201,4 +201,50 @@ final class CustomRecipientHeadersTest extends TestCase
         self::assertSame(['Bcc: real@example.com'], $this->lines($headers, 'Bcc'));
         self::assertSame(['Cc: c@co.example'], $this->lines($headers, 'Cc'));
     }
+
+    public function testBccBatchesAfterTheFirstDoNotCarryACustomToWhenTheMessageHasATo(): void
+    {
+        $messages = [];
+        $mailer = Mailer::newInstance(['newline' => "\n"])->setTransport(new SendmailTransport(
+            '/usr/sbin/sendmail',
+            new EmailValidator(),
+            static function (string $command, string $raw) use (&$messages): int {
+                $messages[] = $raw;
+
+                return 0;
+            },
+        ));
+        $mailer->setFrom('s@example.com')->setSubject('Subject')->setMessage('Body')
+            ->setTo('t@example.com')
+            ->setBCC(['b1@example.com', 'b2@example.com', 'b3@example.com'], 2)
+            ->setHeader('To', 'other@co.example')
+            ->send();
+
+        self::assertCount(2, $messages);
+        self::assertSame(['To: t@example.com'], $this->lines($messages[0], 'To'));
+        self::assertSame([], $this->lines($messages[1], 'To'));
+    }
+
+    public function testBccOnlyBatchesKeepACustomTo(): void
+    {
+        $messages = [];
+        $mailer = Mailer::newInstance(['newline' => "\n"])->setTransport(new SendmailTransport(
+            '/usr/sbin/sendmail',
+            new EmailValidator(),
+            static function (string $command, string $raw) use (&$messages): int {
+                $messages[] = $raw;
+
+                return 0;
+            },
+        ));
+        $mailer->setFrom('s@example.com')->setSubject('Subject')->setMessage('Body')
+            ->setBCC(['b1@example.com', 'b2@example.com', 'b3@example.com'], 2)
+            ->setHeader('To', 'undisclosed-recipients:;')
+            ->send();
+
+        self::assertCount(2, $messages);
+        foreach ($messages as $message) {
+            self::assertSame(['To: undisclosed-recipients:;'], $this->lines($message, 'To'));
+        }
+    }
 }
