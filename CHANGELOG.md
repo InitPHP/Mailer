@@ -48,7 +48,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
   without `setCC()`/`setBCC()`/`setTo()` still adds that header. (3.0.0 lost a
   custom `To` on sendmail and SMTP when the message had no To recipient; it is now
-  kept there too.) A name with a space, a
+  kept there too. `sendmail -t` reads recipients from the headers, so such a
+  hand-set `To` is now also a recipient on sendmail.) A name with a space, a
   colon or any non-printable or non-ASCII character throws a `MailerException`.
 - `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
   dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.

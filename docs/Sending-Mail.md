@@ -137,10 +137,12 @@ that only has BCC recipients, adds that header.
 
 Use `setTo()`, `setCC()` and `setBCC()` for recipients, and know what a header
 set by hand does on each transport. With `mail()` and `sendmail` the MTA reads
-the recipients from the headers, so a `Cc` or `Bcc` header set by hand **does**
-add a recipient (and a `Bcc` header set by hand on `sendmail` is removed from the
-delivered copy like any other `Bcc`). With `smtp` only the `RCPT TO` list counts:
-a hand-set `Cc` or `Bcc` header adds no recipient, and a hand-set `Bcc` stays
+the recipients from the headers, so a `To`, `Cc` or `Bcc` header set by hand
+**does** add a recipient (and a `Bcc` header set by hand on `sendmail` is removed
+from the delivered copy like any other `Bcc`). With BCC batching the header is
+repeated in every batch, so that address gets one copy per batch. A group such as
+`undisclosed-recipients:;` adds no recipient. With `smtp` only the `RCPT TO` list counts:
+a hand-set `To`, `Cc` or `Bcc` header adds no recipient, and a hand-set `Bcc` stays
 **visible** in the message every recipient receives:
 
 ```php

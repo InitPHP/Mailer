@@ -88,7 +88,9 @@ each transport does the right thing:
 - **`sendmail`** — `To`, `Cc` and `Bcc` go in the headers; the MTA strips `Bcc`
   thanks to `-t`.
 - **`smtp`** — `To` and `Cc` are visible headers; every recipient (including
-  BCC) is delivered with `RCPT TO`, and **`Bcc` never appears in the headers**.
+  BCC) is delivered with `RCPT TO`, and the **recipients you set with `setBCC()`
+  never appear in the headers** (a `Bcc` header you add by hand with
+  `setHeader()` does; see [Sending Mail](Sending-Mail.md#custom-headers)).
 
 ## Supplying your own transport
 

@@ -153,4 +153,25 @@ final class MailTransportTest extends TestCase
 
         $this->assertSame("=?UTF-8?Q?a?=\r\n =?UTF-8?Q?b?=", $this->captured['subject']);
     }
+
+    public function testACustomSubjectHeaderIsDroppedBecauseSubjectIsAMailArgument(): void
+    {
+        $email = new PreparedEmail(
+            new Address('from@example.com'),
+            ['a@example.com'],
+            [],
+            [],
+            'Real subject',
+            ['From' => '<from@example.com>', 'subject' => 'Evil subject', 'SUBJECT' => 'Evil too'],
+            'Content-Type: text/plain; charset=UTF-8',
+            'Body',
+            "\n",
+        );
+
+        $this->transport()->send($email);
+
+        $this->assertSame('Real subject', $this->captured['subject']);
+        $this->assertStringNotContainsString('ubject', $this->captured['headers']);
+        $this->assertStringNotContainsString('Evil', $this->captured['headers']);
+    }
 }

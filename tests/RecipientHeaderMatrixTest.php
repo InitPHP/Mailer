@@ -153,8 +153,9 @@ final class RecipientHeaderMatrixTest extends TestCase
     }
 
     /**
-     * Pins the difference from 3.0.0 to the two intended kinds, so a change that
-     * drops or adds anything else shows up here.
+     * Compares the two recorded columns (it does not run the mailer) and allows
+     * the difference from 3.0.0 to be only of the two intended kinds, so a changed
+     * expectation that drops or adds anything else shows up here.
      *
      * @dataProvider matrix
      *
