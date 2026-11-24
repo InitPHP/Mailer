@@ -22,6 +22,7 @@ use InitPHP\Mailer\Encoding\WordWrapper;
 use InitPHP\Mailer\Exception\AttachmentException;
 use InitPHP\Mailer\Exception\ConfigurationException;
 use InitPHP\Mailer\Exception\InvalidAddressException;
+use InitPHP\Mailer\Exception\MailerException;
 use InitPHP\Mailer\Message\Address;
 use InitPHP\Mailer\Message\Attachment;
 use InitPHP\Mailer\Message\HeaderRenderer;
@@ -80,6 +81,15 @@ class Mailer
     private const NEWLINES = ["\n", "\r\n", "\n\r", "\r"];
 
     private const PROTOCOLS = ['mail', 'sendmail', 'smtp'];
+
+    /**
+     * Lower-cased names of the content headers every message gets from the MIME
+     * builder; a custom header with one of these names is always dropped. The
+     * other headers the library writes are known only while the message is built
+     * (see {@see buildGeneralHeaders()}): `Cc` is written only when there are CC
+     * recipients, and `To`, `Subject` and `Bcc` are left to the transport.
+     */
+    private const CONTENT_HEADERS = ['content-type', 'content-transfer-encoding'];
 
     /* ----- Mutable settings (initialised from config, changeable via setters) ----- */
 
@@ -205,13 +215,28 @@ class Mailer
     }
 
     /**
-     * Adds an arbitrary header (for example `List-Unsubscribe`). CR/LF are
-     * stripped from the value to prevent header injection. Reserved headers
-     * managed by the library (From, To, Subject, …) take precedence.
+     * Adds an arbitrary header (for example `List-Unsubscribe`). CR, LF and NUL
+     * are stripped from the value to prevent header injection; a header name
+     * that is not made of printable ASCII characters other than `:` is
+     * rejected. A header the library writes itself for the message (From,
+     * Reply-To, Date, Message-ID, Cc when there are CC recipients, To, Subject,
+     * Bcc when there are BCC recipients, …) takes precedence over a custom header
+     * of the same name, whatever the case; use setCC() and setBCC() for
+     * recipients. A custom `Cc`, `Bcc` or `To` the library does not write (no CC,
+     * BCC or To recipients) is passed through unchanged.
+     *
+     * @throws MailerException When the header name is not a valid field name.
      */
     public function setHeader(string $header, string $value): self
     {
-        $this->customHeaders[$header] = (string) preg_replace('/[\r\n]+/', '', $value);
+        if (!HeaderRenderer::isValidName($header)) {
+            throw new MailerException(
+                'A header name must be made of printable ASCII characters other than ":" '
+                . '(no spaces, line breaks or NUL).',
+            );
+        }
+
+        $this->customHeaders[$header] = (string) preg_replace('/[\r\n\0]+/', '', $value);
 
         return $this;
     }
@@ -229,6 +254,7 @@ class Mailer
 
         if ($returnPath !== null) {
             $returnPath = trim($returnPath, "<> \t\n\r\0\x0B");
+            EmailValidator::assertSafeAddresses([$returnPath]);
             $this->assertValid($returnPath);
         }
 
@@ -352,7 +378,7 @@ class Mailer
 
     public function setAltMessage(string $str): self
     {
-        $this->altMessage = trim($str);
+        $this->altMessage = trim((string) preg_replace('/\r/', '', $str));
 
         return $this;
     }
@@ -427,11 +453,18 @@ class Mailer
 
     /**
      * Builds a unique Message-ID based on the sender domain.
+     *
+     * @throws InvalidAddressException When the configured sender address is unsafe.
      */
     public function getMessageID(): string
     {
-        $from = $this->returnPath ?? $this->from?->getEmail() ?? $this->config->fromEmail;
-        $domain = strstr($from, '@');
+        $from = $this->returnPath ?? $this->from?->getEmail();
+        if ($from === null && $this->config->fromEmail !== '') {
+            // Parsed (and so checked) like the sender that send() will use, not
+            // read raw from the configuration.
+            $from = Address::parse($this->config->fromEmail, $this->config->fromName)->getEmail();
+        }
+        $domain = $from === null ? false : strstr($from, '@');
 
         return '<' . uniqid('', true) . ($domain === false ? '@localhost' : $domain) . '>';
     }
@@ -640,7 +673,7 @@ class Mailer
      */
     private function buildGeneralHeaders(Address $from, Address $replyTo): array
     {
-        $headers = $this->customHeaders;
+        $headers = [];
         $headers['Date'] = $this->date;
         $headers['From'] = $this->formatAddressHeader($from);
         $headers['Return-Path'] = '<' . ($this->returnPath ?? $from->getEmail()) . '>';
@@ -655,7 +688,22 @@ class Mailer
         $headers['Message-ID'] = $this->getMessageID();
         $headers['MIME-Version'] = '1.0';
 
-        return $headers;
+        // A custom header the library also writes loses, whatever the case of
+        // its name. One the library does not write for this message is kept.
+        $managed = HeaderRenderer::names($headers);
+        if ($this->to !== []) {
+            // The transport writes To (or passes it to mail()) for the whole message.
+            $managed['to'] = true;
+        }
+        $custom = [];
+        foreach ($this->customHeaders as $name => $value) {
+            $key = strtolower(trim((string) $name));
+            if (!isset($managed[$key]) && !\in_array($key, self::CONTENT_HEADERS, true)) {
+                $custom[(string) $name] = $value;
+            }
+        }
+
+        return $custom + $headers;
     }
 
     /**
@@ -737,6 +785,7 @@ class Mailer
         foreach ($value as $item) {
             $item = trim((string) $item, "<> \t\r\n\0\x0B");
             if ($item !== '') {
+                EmailValidator::assertSafeAddresses([$item]);
                 $list[] = $item;
             }
         }

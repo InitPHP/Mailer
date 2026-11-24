@@ -4,6 +4,68 @@ All notable changes to `initphp/mailer` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- A CR, LF or NUL in an address, display name or return path is now rejected
+  with an `InvalidAddressException` **whether or not** the `validate` option is
+  on (`Address`, `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`).
+  Before, `validate => false` also switched off the only line-break check, so a
+  request-supplied address could add headers or SMTP commands. Leading and
+  trailing line breaks are still trimmed, and a recipient string is still split
+  on whitespace.
+- `setHeader()` throws a `MailerException` for a header name containing a CR, LF
+  or NUL. A header value keeps its documented behaviour: CR and LF are stripped,
+  and NUL is now stripped too. The subject is stripped of NUL as well.
+- Attachment names, dispositions and MIME types containing a CR, LF or NUL throw
+  an `AttachmentException`; the `userAgent` and `charset` options containing one
+  throw a `ConfigurationException`.
+- `SmtpTransport` refuses a recipient containing a CR, LF, NUL, `<` or `>`
+  (`InvalidAddressException`) or a client hostname containing a CR, LF or NUL
+  (`TransportException`) before it connects, instead of writing it to the socket.
+
+### Fixed
+
+- **SMTP connection state after a failure.** A failed greeting, `EHLO`, `STARTTLS`,
+  TLS handshake, `AUTH`, recipient or message now closes the connection and
+  forgets the "authenticated" flag. Before, the socket stayed open, so the next
+  `send()` skipped `STARTTLS` and wrote `AUTH LOGIN` with the base64 credentials
+  in clear text. A greeting other than `220` is now an error.
+- With `DSN` on, the `ORCPT` address is xtext-encoded (RFC 3461); before, a space
+  in an address (possible with `validate` off) could append SMTP parameters.
+- `StreamSocketClient::enableCrypto()` refuses to start TLS while clear-text
+  bytes are still in the read buffer (STARTTLS response injection).
+- The `Message-ID` domain is taken from the parsed sender, not from the raw
+  `fromEmail` option, and `Address::parse()` checks the whole input before the
+  display name is split off, so a CR, LF or NUL cannot hide in the part that is
+  discarded.
+- A `<` or `>` inside an address is rejected (even with `validate` off): it could
+  close the SMTP path and add parameters (`RCPT TO:<a@x.com> NOTIFY=NEVER>`).
+- `setHeader()`: a header the library writes itself for the message wins over a
+  custom one of the same name whatever the case (a custom `from`, or `bcc` next
+  to a real BCC list, is dropped instead of added as a second header). A header
+  the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
+  without `setCC()`/`setBCC()`/`setTo()` still adds that header. (3.0.0 lost a
+  custom `To` on sendmail and SMTP when the message had no To recipient; it is now
+  kept there too. `sendmail -t` reads recipients from the headers, so such a
+  hand-set `To` is now also a recipient on sendmail.) A name with a space, a
+  colon or any non-printable or non-ASCII character throws a `MailerException`.
+- `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
+  dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.
+- A `"` or `\` in an attachment name is escaped inside the quoted `name`
+  parameter; the generated Content-ID keeps only `[A-Za-z0-9._-]` of the name.
+- `QEncoder`: input that is not valid UTF-8 is replaced with `?` instead of
+  raising iconv notices and producing garbage, and the fallback encoder for a
+  non-UTF-8 charset writes the missing `=` before each byte, so the encoded-words
+  are valid again.
+- `HeaderRenderer` (used by all three transports) and the `mail()` / sendmail
+  transports refuse a header name that is not a field name, a value with a line
+  break other than a fold (a line break followed by a space or tab), and
+  recipients with a line break or angle bracket, so a `PreparedEmail` built by
+  hand cannot inject headers. A MIME boundary from `setBoundaryFactory()` that is
+  empty or contains a quote, CR, LF or NUL throws a `MailerException`.
+
 ## [3.0.0] - 2026-11-22
 
 ### Changed (breaking)

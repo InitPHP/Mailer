@@ -15,6 +15,9 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer\Message;
 
+use InitPHP\Mailer\Exception\InvalidAddressException;
+use InitPHP\Mailer\Validation\EmailValidator;
+
 use function preg_match;
 use function trim;
 
@@ -26,18 +29,37 @@ use function trim;
  */
 final class Address
 {
+    /**
+     * @throws InvalidAddressException When the address contains a CR, LF, NUL,
+     *                                 `<` or `>`, or the name a CR, LF or NUL.
+     *                                 This is checked even when address
+     *                                 validation is off.
+     */
     public function __construct(
         private readonly string $email,
         private readonly string $name = '',
-    ) {}
+    ) {
+        EmailValidator::assertSafeAddresses([$email]);
+        if (EmailValidator::hasLineBreakOrNul($name)) {
+            throw new InvalidAddressException('A display name must not contain a line break or a NUL character.');
+        }
+    }
 
     /**
      * Parses `"Name" <email>`, `<email>` or `email` into an Address. A display
      * name passed explicitly takes precedence over one embedded in `$raw`.
+     *
+     * @throws InvalidAddressException When the address contains a CR, LF, NUL,
+     *                                 `<` or `>`, or the name a CR, LF or NUL.
      */
     public static function parse(string $raw, string $name = ''): self
     {
         $raw = trim($raw);
+        // Checked before the display name is split off, so a line break cannot
+        // hide in the part that is discarded when an explicit name wins.
+        if (EmailValidator::hasLineBreakOrNul($raw)) {
+            throw new InvalidAddressException('An e-mail address must not contain a line break or a NUL character.');
+        }
         if (preg_match('/^(.*)<(.+)>$/', $raw, $matches) === 1) {
             if ($name === '') {
                 $name = trim($matches[1], " \t\"");

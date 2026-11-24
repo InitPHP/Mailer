@@ -21,6 +21,9 @@ final class FakeSocketClient implements SocketClientInterface
 
     public bool $cryptoEnabled = false;
 
+    /** Whether {@see enableCrypto()} reports a successful handshake. */
+    public bool $cryptoResult = true;
+
     public ?string $openedHost = null;
 
     public int $openCount = 0;
@@ -69,9 +72,9 @@ final class FakeSocketClient implements SocketClientInterface
 
     public function enableCrypto(int $cryptoMethod): bool
     {
-        $this->cryptoEnabled = true;
+        $this->cryptoEnabled = $this->cryptoResult;
 
-        return true;
+        return $this->cryptoResult;
     }
 
     public function close(): void

@@ -23,7 +23,12 @@ $mailer->attach(
 ```
 
 If the file cannot be read, or its type cannot be detected and you didn't supply
-one, `attach()` throws [`AttachmentException`](Error-Handling.md).
+one, `attach()` throws [`AttachmentException`](Error-Handling.md). It also throws
+when the name, disposition or MIME type contains a CR, LF or NUL, since they are
+written into the part's MIME headers (this applies to `attachContent()` too). A
+`"` or `\` in the name is escaped with a backslash inside the quoted `name`
+parameter, and the generated Content-ID keeps only letters, digits, `.`, `_` and
+`-` of the name (anything else becomes `_`).
 
 ## In-memory or generated content
 

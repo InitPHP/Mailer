@@ -81,6 +81,13 @@ With `'SMTPKeepAlive' => true` the connection is reused between messages — an
 avoids the connect/handshake cost when sending many messages in a loop. The
 connection is closed when the mailer is garbage-collected.
 
+If a send fails at any point — the greeting or `EHLO` is refused, `STARTTLS` is
+refused or the TLS handshake fails, authentication or a recipient is rejected,
+or the message itself is rejected — the connection is closed and the
+"authenticated" state is forgotten. The next `send()` opens a new connection and
+starts again from the greeting, `STARTTLS` and `AUTH`, so credentials are never
+sent over a connection that did not finish upgrading to TLS.
+
 ```php
 $mailer = Mailer::newInstance([
     'protocol'      => 'smtp',
@@ -102,7 +109,9 @@ foreach ($recipients as $to) {
 ## Delivery Status Notifications (DSN)
 
 `'DSN' => true` appends `NOTIFY=SUCCESS,DELAY,FAILURE` and an `ORCPT` to each
-`RCPT TO`, asking the server for delivery notifications (if it supports DSN).
+`RCPT TO`, asking the server for delivery notifications (if it supports DSN). The
+address in `ORCPT` is encoded as RFC 3461 `xtext` (a space, `+`, `=` or any byte
+outside `!`..`~` becomes `+XX`), so an address cannot add parameters.
 
 ## Timeouts
 
@@ -117,7 +126,9 @@ to socket reads/writes.
 | Auth enabled but no username/password | `ConfigurationException` |
 | Connection refused / cannot open socket | `TransportException` |
 | Unexpected SMTP reply (e.g. `550`, `535`) | `TransportException` (code = reply code) |
-| TLS negotiation fails | `TransportException` |
+| The server's greeting is not `220` | `TransportException` (code = reply code) |
+| TLS negotiation fails, or bytes arrived in clear text together with the `STARTTLS` reply | `TransportException` |
+| A recipient contains a CR, LF, NUL, `<` or `>`, or the client hostname contains a CR, LF or NUL | `InvalidAddressException` / `TransportException`, before connecting |
 
 ```php
 use InitPHP\Mailer\Exception\TransportException;

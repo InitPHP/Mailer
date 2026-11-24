@@ -15,16 +15,30 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer\Message;
 
+use InitPHP\Mailer\Exception\MailerException;
+
+use function preg_match;
+use function preg_replace;
+use function strtolower;
 use function trim;
 
 /**
  * Renders an ordered map of header name => value into a header block. Empty
  * values are skipped, and each line is terminated with the given line ending.
+ *
+ * Every name and value is checked on the way out, so a transport never writes a
+ * header that was built by hand (a `PreparedEmail` is public) with a line break
+ * that would start another header. The only line break a value may contain is a
+ * fold: a line ending directly followed by a space or tab, as the Q-encoder
+ * produces for a long subject.
  */
 final class HeaderRenderer
 {
     /**
      * @param array<string, string> $headers
+     *
+     * @throws MailerException When a header name is not a valid field name, or a
+     *                         value contains a line break other than a fold, or a NUL.
      */
     public static function render(array $headers, string $newline): string
     {
@@ -32,10 +46,80 @@ final class HeaderRenderer
         foreach ($headers as $key => $value) {
             $value = trim($value);
             if ($value !== '') {
+                self::assertSafe((string) $key, $value);
                 $out .= $key . ': ' . $value . $newline;
             }
         }
 
         return $out;
+    }
+
+    /**
+     * The set of header names in `$headers`, lower-cased and trimmed, as the keys
+     * of an array (`['from' => true, …]`).
+     *
+     * @param array<string, string> $headers
+     *
+     * @return array<string, true>
+     */
+    public static function names(array $headers): array
+    {
+        $names = [];
+        foreach ($headers as $name => $_) {
+            $names[strtolower(trim((string) $name))] = true;
+        }
+
+        return $names;
+    }
+
+    /**
+     * `$headers` without the headers named in `$names`, compared without regard
+     * to case or surrounding whitespace. Transports use it to drop a custom
+     * header they are about to write themselves.
+     *
+     * @param array<string, string> $headers
+     * @param list<string>          $names
+     *
+     * @return array<string, string>
+     */
+    public static function without(array $headers, array $names): array
+    {
+        $drop = [];
+        foreach ($names as $name) {
+            $drop[strtolower(trim($name))] = true;
+        }
+
+        $kept = [];
+        foreach ($headers as $name => $value) {
+            if (!isset($drop[strtolower(trim((string) $name))])) {
+                $kept[(string) $name] = $value;
+            }
+        }
+
+        return $kept;
+    }
+
+    /**
+     * Whether `$name` is usable as a header field name: printable ASCII other
+     * than `:`, so no space, line break, NUL or colon.
+     */
+    public static function isValidName(string $name): bool
+    {
+        return preg_match('/\A[\x21-\x39\x3B-\x7E]+\z/', $name) === 1;
+    }
+
+    /**
+     * @throws MailerException
+     */
+    public static function assertSafe(string $name, string $value): void
+    {
+        if (!self::isValidName($name)) {
+            throw new MailerException('A header name must be made of printable ASCII characters other than ":".');
+        }
+
+        $unfolded = (string) preg_replace('/(?:\r\n|\n\r|\n|\r)(?=[ \t])/', '', $value);
+        if (preg_match('/[\r\n\0]/', $unfolded) === 1) {
+            throw new MailerException(\sprintf('The "%s" header value must not contain a line break or a NUL character.', $name));
+        }
     }
 }

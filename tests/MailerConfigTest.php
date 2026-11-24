@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer\Tests;
 
+use InitPHP\Mailer\Exception\ConfigurationException;
 use InitPHP\Mailer\MailerConfig;
 use PHPUnit\Framework\TestCase;
 
@@ -75,5 +76,27 @@ final class MailerConfigTest extends TestCase
     {
         $this->assertSame(\PHP_EOL, (new MailerConfig(['newline' => 'xx']))->newline);
         $this->assertSame("\r\n", (new MailerConfig(['newline' => "\r\n"]))->newline);
+    }
+
+    /**
+     * @dataProvider unsafeHeaderOptions
+     */
+    public function testRejectsALineBreakOrNulInAHeaderOption(string $option, string $value): void
+    {
+        $this->expectException(ConfigurationException::class);
+
+        new MailerConfig([$option => $value]);
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function unsafeHeaderOptions(): array
+    {
+        return [
+            'CRLF in userAgent' => ['userAgent', "Agent\r\nBcc: x@example.test"],
+            'NUL in userAgent'  => ['userAgent', "Agent\0"],
+            'LF in charset'     => ['charset', "utf-8\nBcc: x@example.test"],
+        ];
     }
 }

@@ -56,7 +56,19 @@ final class MailTransport implements TransportInterface
 
     public function send(PreparedEmail $email): void
     {
-        $headers = $email->headers;
+        EmailValidator::assertSafeAddresses([...$email->to, ...$email->bcc]);
+        HeaderRenderer::assertSafe('Subject', $email->subject);
+
+        // To (when there are recipients) and Subject travel as mail() arguments,
+        // so a custom header of that name would only duplicate them.
+        $drop = ['Subject'];
+        if ($email->to !== []) {
+            $drop[] = 'To';
+        }
+        if ($email->bcc !== []) {
+            $drop[] = 'Bcc';
+        }
+        $headers = HeaderRenderer::without($email->headers, $drop);
         if ($email->bcc !== []) {
             $headers['Bcc'] = implode(', ', $email->bcc);
         }

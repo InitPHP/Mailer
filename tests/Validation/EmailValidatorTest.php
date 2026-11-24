@@ -61,4 +61,15 @@ final class EmailValidatorTest extends TestCase
         $this->assertFalse($this->validator->isShellSafe('"a b"@example.com'));
         $this->assertFalse($this->validator->isShellSafe('user@example.com -X/tmp/x'));
     }
+
+    public function testHasLineBreakOrNulDetectsCrLfAndNul(): void
+    {
+        $this->assertTrue(EmailValidator::hasLineBreakOrNul("a\rb"));
+        $this->assertTrue(EmailValidator::hasLineBreakOrNul("a\nb"));
+        $this->assertTrue(EmailValidator::hasLineBreakOrNul("a\0b"));
+        $this->assertTrue(EmailValidator::hasLineBreakOrNul("a@example.com\n"));
+        $this->assertFalse(EmailValidator::hasLineBreakOrNul('a@example.com'));
+        $this->assertFalse(EmailValidator::hasLineBreakOrNul("a\tb"));
+        $this->assertFalse(EmailValidator::hasLineBreakOrNul(''));
+    }
 }

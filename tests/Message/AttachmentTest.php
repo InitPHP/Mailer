@@ -97,4 +97,49 @@ final class AttachmentTest extends TestCase
 
         return $path;
     }
+
+    /**
+     * @dataProvider unsafeMetadata
+     */
+    public function testFromContentRejectsALineBreakOrNulInTheMetadata(string $name, string $disposition, string $mime): void
+    {
+        $this->expectException(AttachmentException::class);
+
+        Attachment::fromContent('PAYLOAD', $name, $disposition, $mime);
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function unsafeMetadata(): array
+    {
+        return [
+            'CRLF in the name'        => ["a.txt\r\nBcc: x@example.test", 'attachment', 'text/plain'],
+            'NUL in the name'         => ["a\0.txt", 'attachment', 'text/plain'],
+            'LF in the disposition'   => ['a.txt', "attachment\nBcc: x@example.test", 'text/plain'],
+            'CRLF in the MIME type'   => ['a.txt', 'attachment', "text/plain\r\nBcc: x@example.test"],
+        ];
+    }
+
+    public function testFromPathRejectsALineBreakInTheNewName(): void
+    {
+        $dir = sys_get_temp_dir() . '/initphp-mailer-' . uniqid('', true);
+        mkdir($dir);
+        $this->tempDirs[] = $dir;
+        file_put_contents($dir . '/a.txt', 'x');
+
+        $this->expectException(AttachmentException::class);
+
+        Attachment::fromPath($dir . '/a.txt', '', "b.txt\r\nBcc: x@example.test", 'text/plain');
+    }
+
+    public function testTheContentIdKeepsOnlySafeCharactersOfTheName(): void
+    {
+        $attachment = Attachment::fromContent('x', 'my logo">.png', 'inline');
+
+        $cid = $attachment->makeInline();
+
+        $this->assertSame(1, preg_match('/\A[A-Za-z0-9._-]+@[0-9a-f.]+\z/', $cid));
+        $this->assertStringStartsWith('my_logo__.png@', $cid);
+    }
 }

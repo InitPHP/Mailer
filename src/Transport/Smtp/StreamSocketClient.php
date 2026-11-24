@@ -21,6 +21,7 @@ use function fclose;
 use function fgets;
 use function fsockopen;
 use function fwrite;
+use function stream_get_meta_data;
 use function stream_set_timeout;
 use function stream_socket_enable_crypto;
 use function substr;
@@ -104,8 +105,19 @@ final class StreamSocketClient implements SocketClientInterface
 
     public function enableCrypto(int $cryptoMethod): bool
     {
-        return \is_resource($this->socket)
-            && stream_socket_enable_crypto($this->socket, true, $cryptoMethod) === true;
+        if (!\is_resource($this->socket)) {
+            return false;
+        }
+
+        // Bytes that arrived in clear text together with the STARTTLS reply are
+        // still in PHP's read buffer and would be read after the handshake as
+        // if the TLS peer had sent them (STARTTLS response injection). A server
+        // never sends anything between its "220" and the handshake, so refuse.
+        if (stream_get_meta_data($this->socket)['unread_bytes'] > 0) {
+            return false;
+        }
+
+        return stream_socket_enable_crypto($this->socket, true, $cryptoMethod) === true;
     }
 
     public function close(): void

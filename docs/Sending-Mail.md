@@ -71,10 +71,21 @@ try {
 ```
 
 Disable validation with `'validate' => false` only if you need to accept
-addresses the PHP filter rejects, and only for addresses you control. The
-mailer then no longer rejects a CR/LF inside an address, so a request-supplied
-address could inject headers or recipients; reject line breaks yourself — see
+addresses the PHP filter rejects, and only for addresses you control. A CR, LF,
+NUL, `<` or `>` inside an address, or a CR, LF or NUL in a display name, is
+rejected with an `InvalidAddressException` even then, so a request-supplied
+address cannot start another header or add parameters to an SMTP command — see
 [Error Handling](Error-Handling.md#fail-fast-on-bad-input).
+
+That check does **not** stop a request-supplied *string* from naming several
+recipients: `setTo()` splits a string on commas and whitespace, so
+`"victim@example.com,other@example.com"` is two recipients (with validation off,
+a comma inside an array item is not split either, and the `To` header then lists
+both). Pass a single untrusted address as an array item and keep `validate` on:
+
+```php
+$mailer->setTo([$_POST['email']]); // one address; validation rejects "a@x.com,b@x.com"
+```
 
 ## Subject and body
 
@@ -108,9 +119,31 @@ repeatedly. If any batch fails, the failure is thrown.
 
 ## Custom headers
 
-Add any header with `setHeader()`. CR/LF are stripped from the value to prevent
-header injection, and headers the library manages (From, To, Subject, …) take
-precedence:
+Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
+prevent header injection (a trailing newline in a value is harmless; it is just
+removed). A header *name* must be printable ASCII without `:` or spaces, or
+`setHeader()` throws a `MailerException`.
+
+If the library writes a header itself for this message, its value wins over a
+custom header of the same name, whatever the case of the name: a custom `from`
+is dropped, not added next to the real `From`. That covers From, Reply-To,
+Return-Path, Date, Message-ID, MIME-Version, User-Agent, X-Mailer, X-Sender,
+X-Priority, Content-Type and Content-Transfer-Encoding; `Subject`; `To` when you
+called `setTo()`; `Cc` when you called `setCC()`; and `Bcc` when you called
+`setBCC()` (sendmail and `mail()` write it; SMTP never does). A header the
+library does **not** write is passed through as you set it: `setHeader('Cc', …)`
+with no `setCC()`, or `setHeader('To', 'undisclosed-recipients:;')` on a message
+that only has BCC recipients, adds that header.
+
+Use `setTo()`, `setCC()` and `setBCC()` for recipients, and know what a header
+set by hand does on each transport. With `mail()` and `sendmail` the MTA reads
+the recipients from the headers, so a `To`, `Cc` or `Bcc` header set by hand
+**does** add a recipient (and a `Bcc` header set by hand on `sendmail` is removed
+from the delivered copy like any other `Bcc`). With BCC batching the header is
+repeated in every batch, so that address gets one copy per batch. A group such as
+`undisclosed-recipients:;` adds no recipient. With `smtp` only the `RCPT TO` list counts:
+a hand-set `To`, `Cc` or `Bcc` header adds no recipient, and a hand-set `Bcc` stays
+**visible** in the message every recipient receives:
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');

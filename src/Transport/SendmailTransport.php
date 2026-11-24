@@ -50,11 +50,23 @@ final class SendmailTransport implements TransportInterface
 
     public function send(PreparedEmail $email): void
     {
+        EmailValidator::assertSafeAddresses([...$email->to, ...$email->bcc]);
+
         $from = $email->from->getEmail();
         $fromArg = $this->validator->isShellSafe($from) ? '-f ' . $from : '';
 
-        $headers = $email->headers;
-        $headers['To'] = implode(', ', $email->to);
+        // A custom To or Bcc only gives way when the library writes one.
+        $drop = ['Subject'];
+        if ($email->to !== []) {
+            $drop[] = 'To';
+        }
+        if ($email->bcc !== []) {
+            $drop[] = 'Bcc';
+        }
+        $headers = HeaderRenderer::without($email->headers, $drop);
+        if ($email->to !== []) {
+            $headers['To'] = implode(', ', $email->to);
+        }
         $headers['Subject'] = $email->subject;
         if ($email->bcc !== []) {
             $headers['Bcc'] = implode(', ', $email->bcc);
