@@ -22,6 +22,7 @@ use InitPHP\Mailer\Encoding\WordWrapper;
 use InitPHP\Mailer\Exception\AttachmentException;
 use InitPHP\Mailer\Exception\ConfigurationException;
 use InitPHP\Mailer\Exception\InvalidAddressException;
+use InitPHP\Mailer\Exception\MailerException;
 use InitPHP\Mailer\Message\Address;
 use InitPHP\Mailer\Message\Attachment;
 use InitPHP\Mailer\Message\HeaderRenderer;
@@ -205,13 +206,20 @@ class Mailer
     }
 
     /**
-     * Adds an arbitrary header (for example `List-Unsubscribe`). CR/LF are
-     * stripped from the value to prevent header injection. Reserved headers
-     * managed by the library (From, To, Subject, …) take precedence.
+     * Adds an arbitrary header (for example `List-Unsubscribe`). CR, LF and NUL
+     * are stripped from the value to prevent header injection; a header name
+     * containing one of them is rejected. Reserved headers managed by the
+     * library (From, To, Subject, …) take precedence.
+     *
+     * @throws MailerException When the header name contains a CR, LF or NUL.
      */
     public function setHeader(string $header, string $value): self
     {
-        $this->customHeaders[$header] = (string) preg_replace('/[\r\n]+/', '', $value);
+        if (EmailValidator::hasLineBreakOrNul($header)) {
+            throw new MailerException('A header name must not contain a line break or a NUL character.');
+        }
+
+        $this->customHeaders[$header] = (string) preg_replace('/[\r\n\0]+/', '', $value);
 
         return $this;
     }
@@ -229,6 +237,7 @@ class Mailer
 
         if ($returnPath !== null) {
             $returnPath = trim($returnPath, "<> \t\n\r\0\x0B");
+            $this->assertNoLineBreak($returnPath);
             $this->assertValid($returnPath);
         }
 
@@ -737,11 +746,26 @@ class Mailer
         foreach ($value as $item) {
             $item = trim((string) $item, "<> \t\r\n\0\x0B");
             if ($item !== '') {
+                $this->assertNoLineBreak($item);
                 $list[] = $item;
             }
         }
 
         return $list;
+    }
+
+    /**
+     * Rejects a CR, LF or NUL inside an address, whether or not address
+     * validation is enabled: the address is written into a header and into SMTP
+     * commands.
+     *
+     * @throws InvalidAddressException
+     */
+    private function assertNoLineBreak(string $email): void
+    {
+        if (EmailValidator::hasLineBreakOrNul($email)) {
+            throw new InvalidAddressException('An e-mail address must not contain a line break or a NUL character.');
+        }
     }
 
     /**

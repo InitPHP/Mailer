@@ -4,6 +4,27 @@ All notable changes to `initphp/mailer` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- A CR, LF or NUL in an address, display name or return path is now rejected
+  with an `InvalidAddressException` **whether or not** the `validate` option is
+  on (`Address`, `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`).
+  Before, `validate => false` also switched off the only line-break check, so a
+  request-supplied address could add headers or SMTP commands. Leading and
+  trailing line breaks are still trimmed, and a recipient string is still split
+  on whitespace.
+- `setHeader()` throws a `MailerException` for a header name containing a CR, LF
+  or NUL. A header value keeps its documented behaviour: CR and LF are stripped,
+  and NUL is now stripped too. The subject is stripped of NUL as well.
+- Attachment names, dispositions and MIME types containing a CR, LF or NUL throw
+  an `AttachmentException`; the `userAgent` and `charset` options containing one
+  throw a `ConfigurationException`.
+- `SmtpTransport` refuses a recipient or an SMTP command containing a CR, LF or
+  NUL (`InvalidAddressException` / `TransportException`) instead of writing it to
+  the socket.
+
 ## [3.0.0] - 2026-11-22
 
 ### Changed (breaking)

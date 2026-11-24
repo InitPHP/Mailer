@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace InitPHP\Mailer\Tests\Transport;
 
 use InitPHP\Mailer\Exception\ConfigurationException;
+use InitPHP\Mailer\Exception\InvalidAddressException;
 use InitPHP\Mailer\Exception\TransportException;
 use InitPHP\Mailer\Message\Address;
 use InitPHP\Mailer\Message\PreparedEmail;
@@ -195,5 +196,60 @@ final class SmtpTransportTest extends TestCase
         $this->expectException(ConfigurationException::class);
 
         $transport->send($this->email());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function unsafeRecipients(): array
+    {
+        return [
+            'CRLF command injection' => ["rcpt@example.com>\r\nRSET\r\nMAIL FROM:<x@example.test"],
+            'LF'                     => ["rcpt@example.com\nRSET"],
+            'NUL'                    => ["rcpt@example.com\0"],
+        ];
+    }
+
+    /**
+     * @dataProvider unsafeRecipients
+     */
+    public function testRejectsAnUnsafeRecipientBeforeConnecting(string $recipient): void
+    {
+        $client = new FakeSocketClient([]);
+
+        try {
+            $this->transport($client)->send($this->email(to: ['ok@example.com'], bcc: [$recipient]));
+            $this->fail('Expected an InvalidAddressException.');
+        } catch (InvalidAddressException) {
+            $this->assertSame([], $client->writes);
+            $this->assertSame(0, $client->openCount);
+        }
+    }
+
+    public function testRefusesToWriteACommandContainingALineBreak(): void
+    {
+        $client = new FakeSocketClient(["220 hi\r\n"]);
+        $transport = new SmtpTransport(
+            $client,
+            'mx.example.com',
+            25,
+            5,
+            '',
+            false,
+            '',
+            '',
+            false,
+            false,
+            true,
+            "host\r\nRSET",
+            "\r\n",
+        );
+
+        try {
+            $transport->send($this->email());
+            $this->fail('Expected a TransportException.');
+        } catch (TransportException) {
+            $this->assertStringNotContainsString('RSET', $client->conversation());
+        }
     }
 }

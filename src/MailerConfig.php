@@ -15,6 +15,9 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer;
 
+use InitPHP\Mailer\Exception\ConfigurationException;
+use InitPHP\Mailer\Validation\EmailValidator;
+
 use function strtolower;
 use function strtoupper;
 
@@ -110,6 +113,10 @@ final class MailerConfig
 
     /**
      * @param array<string, mixed> $config
+     *
+     * @throws ConfigurationException When `userAgent` or `charset`, which are
+     *                                written into message headers, contain a
+     *                                CR, LF or NUL character.
      */
     public function __construct(array $config = [])
     {
@@ -149,6 +156,14 @@ final class MailerConfig
         // The charset is upper-cased here so the QEncoder's `=== 'UTF-8'` fast
         // path is reached; leaving it lower-cased was a 1.x bug.
         $this->charset = strtoupper($this->str($config, 'charset', 'UTF-8'));
+
+        foreach (['userAgent' => $this->userAgent, 'charset' => $this->charset] as $option => $value) {
+            if (EmailValidator::hasLineBreakOrNul($value)) {
+                throw new ConfigurationException(
+                    \sprintf('The "%s" option must not contain a line break or a NUL character.', $option),
+                );
+            }
+        }
 
         $priority = $this->int($config, 'priority', 3);
         $this->priority = ($priority >= 1 && $priority <= 5) ? $priority : 3;

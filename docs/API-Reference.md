@@ -23,27 +23,34 @@ $mailer = Mailer::newInstance(['protocol' => 'smtp', /* … */]);
 ### `setFrom(string $from, string $name = '', ?string $returnPath = null): self`
 Sets the sender. `$from` may be `address` or `"Name" <address>`; `$name` wins
 over an embedded name. `$returnPath` sets the envelope sender.
-**Throws** `InvalidAddressException`.
+**Throws** `InvalidAddressException` — also when the address, the name or
+`$returnPath` contains a CR, LF or NUL, whatever the `validate` option says.
 
 ### `setReplyTo(string $replyTo, string $name = ''): self`
 Sets the `Reply-To`. Defaults to the sender when never called.
-**Throws** `InvalidAddressException`.
+**Throws** `InvalidAddressException` (also for a CR, LF or NUL, even with
+`validate` off).
 
 ### `setTo(string|array $to): self`
 Sets the To recipients. Accepts one address, a comma/space-separated string, or
-an array. **Throws** `InvalidAddressException`.
+an array. **Throws** `InvalidAddressException`. An address containing a CR, LF or
+NUL is rejected even with `validate` off; in a string, whitespace (including line
+breaks) still separates addresses.
 
 ### `setCC(string|array $cc): self`
-Sets the CC recipients. **Throws** `InvalidAddressException`.
+Sets the CC recipients. **Throws** `InvalidAddressException` (same line-break
+rule as `setTo()`).
 
 ### `setBCC(string|array $bcc, ?int $limit = null): self`
 Sets the BCC recipients. A non-null `$limit` enables [BCC batching](Sending-Mail.md#bcc-batching)
-with that batch size. **Throws** `InvalidAddressException`.
+with that batch size. **Throws** `InvalidAddressException` (same line-break rule as
+`setTo()`).
 
 ## Content
 
 ### `setSubject(string $subject): self`
 Sets the subject. Encoded (RFC 2047 Q) automatically when it contains non-ASCII.
+CR, LF and NUL are removed when the message is built.
 
 ### `setMessage(string $body): self`
 Sets the body (plain text or HTML depending on the mail type). Carriage returns
@@ -60,11 +67,13 @@ Sets the plain-text alternative used for HTML messages.
 ### `attach(string $file, string $disposition = '', ?string $newName = null, ?string $mime = null): self`
 Attaches a file from disk. `$disposition` defaults to `attachment` (use `inline`
 for embedded images), `$newName` overrides the displayed name, `$mime` skips
-auto-detection. **Throws** `AttachmentException`.
+auto-detection. **Throws** `AttachmentException`, also when the name, disposition
+or MIME type contains a CR, LF or NUL.
 
 ### `attachContent(string $content, string $name, string $disposition = 'attachment', ?string $mime = null): self`
 Attaches in-memory/generated content. `$mime` defaults to
-`application/octet-stream`.
+`application/octet-stream`. **Throws** `AttachmentException` when the name,
+disposition or MIME type contains a CR, LF or NUL.
 
 ### `setAttachmentCID(string $fileName): string`
 Promotes a previously added attachment (matched by its path/name) to an inline
@@ -74,8 +83,9 @@ Promotes a previously added attachment (matched by its path/name) to an inline
 ## Formatting & headers
 
 ### `setHeader(string $header, string $value): self`
-Adds a custom header. CR/LF are stripped; library-managed headers take
-precedence.
+Adds a custom header. CR, LF and NUL are stripped from the value;
+library-managed headers take precedence. **Throws** `MailerException` when the
+header name contains a CR, LF or NUL.
 
 ### `setPriority(int $n = 3): self`
 `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3.

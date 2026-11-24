@@ -30,11 +30,11 @@ $mailer = Mailer::newInstance([
 | `fromEmail` | string | `''` | Sender used when [`setFrom()`](Sending-Mail.md) is not called. |
 | `fromName` | string | `''` | Display name paired with `fromEmail`. |
 | `mailType` | string | `'text'` | `'text'` or `'html'`. |
-| `charset` | string | `'UTF-8'` | Character set; stored upper-cased. |
+| `charset` | string | `'UTF-8'` | Character set; stored upper-cased. A CR, LF or NUL throws a `ConfigurationException`. |
 | `priority` | int | `3` | `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3. |
 | `altMessage` | string | `''` | Plain-text alternative for HTML messages. |
-| `userAgent` | string | `'InitPHP Mailer'` | `User-Agent` / `X-Mailer` header value. |
-| `validate` | bool | `true` | Validate addresses as they are added. Turning it off also removes the CR/LF check — see [Error Handling](Error-Handling.md). |
+| `userAgent` | string | `'InitPHP Mailer'` | `User-Agent` / `X-Mailer` header value. A CR, LF or NUL throws a `ConfigurationException`. |
+| `validate` | bool | `true` | Validate addresses as they are added. Turning it off removes the format check only; a CR, LF or NUL in an address is rejected either way — see [Error Handling](Error-Handling.md). |
 
 ## Transport selection
 

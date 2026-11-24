@@ -16,10 +16,12 @@ declare(strict_types=1);
 namespace InitPHP\Mailer\Transport;
 
 use InitPHP\Mailer\Exception\ConfigurationException;
+use InitPHP\Mailer\Exception\InvalidAddressException;
 use InitPHP\Mailer\Exception\TransportException;
 use InitPHP\Mailer\Message\HeaderRenderer;
 use InitPHP\Mailer\Message\PreparedEmail;
 use InitPHP\Mailer\Transport\Smtp\SocketClientInterface;
+use InitPHP\Mailer\Validation\EmailValidator;
 use Throwable;
 
 use function array_merge;
@@ -61,6 +63,17 @@ final class SmtpTransport implements TransportInterface
     {
         if (trim($this->host) === '') {
             throw new ConfigurationException('No SMTP host has been configured.');
+        }
+
+        // The recipients are written into SMTP commands (the sender is an
+        // Address, which already refuses them); check them before connecting so a
+        // bad one never reaches the wire, whatever the caller built the message with.
+        foreach ([...$email->to, ...$email->cc, ...$email->bcc] as $address) {
+            if (EmailValidator::hasLineBreakOrNul($address)) {
+                throw new InvalidAddressException(
+                    'An e-mail address must not contain a line break or a NUL character.',
+                );
+            }
         }
 
         $this->connect();
@@ -190,6 +203,10 @@ final class SmtpTransport implements TransportInterface
 
     private function command(string $command, int $expected): string
     {
+        if (EmailValidator::hasLineBreakOrNul($command)) {
+            throw new TransportException('An SMTP command must not contain a line break or a NUL character.');
+        }
+
         $this->client->write($command . $this->newline);
         $reply = $this->readReply();
         if ($this->code($reply) !== $expected) {

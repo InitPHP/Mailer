@@ -63,6 +63,16 @@ final class EmailValidator
     }
 
     /**
+     * Whether the value contains a CR, LF or NUL character. Such a character
+     * ends a header line or an SMTP command, so it must never reach either; the
+     * check does not depend on the `validate` option.
+     */
+    public static function hasLineBreakOrNul(string $value): bool
+    {
+        return preg_match('/[\r\n\0]/', $value) === 1;
+    }
+
+    /**
      * Whether the address is safe to pass to a shell as a `-f` envelope sender.
      * It must both pass the e-mail filter unchanged and match a conservative
      * local-part/domain pattern, so no shell metacharacters can slip through.

@@ -62,4 +62,12 @@ final class QEncoderTest extends TestCase
             $this->assertLessThanOrEqual(78, \strlen($line));
         }
     }
+
+    public function testStripsLineBreaksAndNul(): void
+    {
+        $encoded = $this->utf8()->encode("Hello\r\nBcc: x@example.test\0");
+
+        $this->assertSame('HelloBcc: x@example.test', iconv_mime_decode($encoded, 0, 'UTF-8'));
+        $this->assertStringNotContainsString("\0", $encoded);
+    }
 }

@@ -16,6 +16,7 @@ declare(strict_types=1);
 namespace InitPHP\Mailer\Message;
 
 use InitPHP\Mailer\Exception\AttachmentException;
+use InitPHP\Mailer\Validation\EmailValidator;
 
 use function base64_encode;
 use function basename;
@@ -51,13 +52,23 @@ final class Attachment
         private readonly string $disposition,
         private readonly string $mimeType,
         private readonly string $content,
-    ) {}
+    ) {
+        // The name, disposition and MIME type are written into MIME headers.
+        foreach ([$name, $disposition, $mimeType] as $value) {
+            if (EmailValidator::hasLineBreakOrNul($value)) {
+                throw new AttachmentException(
+                    'An attachment name, disposition or MIME type must not contain a line break or a NUL character.',
+                );
+            }
+        }
+    }
 
     /**
      * Builds an attachment from a file on disk.
      *
-     * @throws AttachmentException When the file cannot be read or its type
-     *                             cannot be detected.
+     * @throws AttachmentException When the file cannot be read, its type
+     *                             cannot be detected, or the name, disposition
+     *                             or MIME type contains a CR, LF or NUL.
      */
     public static function fromPath(
         string $path,
@@ -85,6 +96,9 @@ final class Attachment
     /**
      * Builds an attachment from raw, in-memory content (for example a rendered
      * PDF). For a stream, pass `stream_get_contents($handle)`.
+     *
+     * @throws AttachmentException When the name, disposition or MIME type
+     *                             contains a CR, LF or NUL.
      */
     public static function fromContent(
         string $content,

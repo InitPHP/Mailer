@@ -71,9 +71,10 @@ try {
 ```
 
 Disable validation with `'validate' => false` only if you need to accept
-addresses the PHP filter rejects, and only for addresses you control. The
-mailer then no longer rejects a CR/LF inside an address, so a request-supplied
-address could inject headers or recipients; reject line breaks yourself — see
+addresses the PHP filter rejects, and only for addresses you control. A CR, LF
+or NUL inside an address or display name is rejected with an
+`InvalidAddressException` even then, so a request-supplied address cannot inject
+headers or recipients — see
 [Error Handling](Error-Handling.md#fail-fast-on-bad-input).
 
 ## Subject and body
@@ -108,8 +109,9 @@ repeatedly. If any batch fails, the failure is thrown.
 
 ## Custom headers
 
-Add any header with `setHeader()`. CR/LF are stripped from the value to prevent
-header injection, and headers the library manages (From, To, Subject, …) take
+Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
+prevent header injection, a header *name* containing one of them throws a
+`MailerException`, and headers the library manages (From, To, Subject, …) take
 precedence:
 
 ```php

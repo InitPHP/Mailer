@@ -14,9 +14,10 @@ MailerException                 (extends \RuntimeException)
 
 | Exception | Thrown when | Thrown by |
 | --- | --- | --- |
-| `InvalidAddressException` | An address fails validation (and validation is on). | `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()` |
-| `ConfigurationException` | A required value is missing: no sender, no recipient, empty SMTP host, auth without credentials. | `send()` |
-| `AttachmentException` | A file can't be read, its type can't be detected, or `setAttachmentCID()` finds no match. | `attach()`, `setAttachmentCID()` |
+| `InvalidAddressException` | An address fails validation (and validation is on), or an address, display name or return path contains a CR, LF or NUL (always). | `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`, `send()` |
+| `ConfigurationException` | A required value is missing: no sender, no recipient, empty SMTP host, auth without credentials; or `userAgent`/`charset` contains a CR, LF or NUL. | `send()`, `new Mailer()` |
+| `AttachmentException` | A file can't be read, its type can't be detected, the name, disposition or MIME type contains a CR, LF or NUL, or `setAttachmentCID()` finds no match. | `attach()`, `attachContent()`, `setAttachmentCID()` |
+| `MailerException` (the base type) | A custom header name contains a CR, LF or NUL. | `setHeader()` |
 | `TransportException` | Delivery failed: refused connection, unexpected SMTP reply, sendmail non-zero exit, or `mail()` returning false. | `send()` |
 
 ## Catch everything
@@ -56,20 +57,14 @@ Need to accept addresses the PHP filter rejects? Turn validation off:
 $mailer = Mailer::newInstance(['validate' => false]);
 ```
 
-> **Security:** `validate => false` removes the only check on addresses. The
-> mailer only trims whitespace from the ends of an address, so a CR or LF inside
-> one (`user@example.com\r\nBcc: attacker@example.test`) is written into the
-> `From` / `Cc` header or the SMTP command as given, which lets a request-supplied
-> address add headers or recipients. If you turn validation off, reject line
-> breaks yourself before the address reaches the mailer:
->
-> ```php
-> if (preg_match('/[\r\n]/', $address) === 1) {
->     throw new \InvalidArgumentException('Invalid address.');
-> }
-> ```
->
-> Never turn validation off for addresses that come from user input.
+> **Security:** `validate => false` removes the format check on addresses, but
+> not the line-break check. A CR, LF or NUL inside an address or a display name
+> (`user@example.com\r\nBcc: attacker@example.test`) is rejected with an
+> `InvalidAddressException` whether validation is on or off, so a request-supplied
+> address cannot add headers or SMTP commands. Only a leading or trailing line
+> break is trimmed. Still avoid turning validation off for addresses that come
+> from user input: the filter is what keeps malformed addresses from reaching
+> the server.
 
 ## Handle delivery failures specifically
 

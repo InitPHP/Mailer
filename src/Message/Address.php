@@ -15,6 +15,9 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer\Message;
 
+use InitPHP\Mailer\Exception\InvalidAddressException;
+use InitPHP\Mailer\Validation\EmailValidator;
+
 use function preg_match;
 use function trim;
 
@@ -26,14 +29,28 @@ use function trim;
  */
 final class Address
 {
+    /**
+     * @throws InvalidAddressException When the address or the name contains a
+     *                                 CR, LF or NUL character. This is checked
+     *                                 even when address validation is off.
+     */
     public function __construct(
         private readonly string $email,
         private readonly string $name = '',
-    ) {}
+    ) {
+        if (EmailValidator::hasLineBreakOrNul($email) || EmailValidator::hasLineBreakOrNul($name)) {
+            throw new InvalidAddressException(
+                'An e-mail address or display name must not contain a line break or a NUL character.',
+            );
+        }
+    }
 
     /**
      * Parses `"Name" <email>`, `<email>` or `email` into an Address. A display
      * name passed explicitly takes precedence over one embedded in `$raw`.
+     *
+     * @throws InvalidAddressException When the address or the name contains a
+     *                                 CR, LF or NUL character.
      */
     public static function parse(string $raw, string $name = ''): self
     {
