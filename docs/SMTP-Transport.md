@@ -109,7 +109,9 @@ foreach ($recipients as $to) {
 ## Delivery Status Notifications (DSN)
 
 `'DSN' => true` appends `NOTIFY=SUCCESS,DELAY,FAILURE` and an `ORCPT` to each
-`RCPT TO`, asking the server for delivery notifications (if it supports DSN).
+`RCPT TO`, asking the server for delivery notifications (if it supports DSN). The
+address in `ORCPT` is encoded as RFC 3461 `xtext` (a space, `+`, `=` or any byte
+outside `!`..`~` becomes `+XX`), so an address cannot add parameters.
 
 ## Timeouts
 

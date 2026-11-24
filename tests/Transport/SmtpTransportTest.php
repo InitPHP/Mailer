@@ -387,4 +387,42 @@ final class SmtpTransportTest extends TestCase
 
         $this->assertStringContainsString("first\r..second\r...third\r..\r.\r", $client->conversation());
     }
+
+    public function testAKeptAliveConnectionAuthenticatesAgainAfterAFailureFollowingASuccessfulAuth(): void
+    {
+        $client = new FakeSocketClient([
+            // First send: AUTH succeeds, MAIL FROM is rejected.
+            "220 hi\r\n", "250 ehlo\r\n", "334 VXNlcm5hbWU6\r\n", "334 UGFzc3dvcmQ6\r\n", "235 ok\r\n", "550 no\r\n",
+            // Second send: a new connection must authenticate again.
+            "220 hi\r\n", "250 ehlo\r\n", "334 VXNlcm5hbWU6\r\n", "334 UGFzc3dvcmQ6\r\n", "235 ok\r\n", "550 no\r\n",
+        ]);
+        $transport = $this->transport($client, auth: true, user: 'user', pass: 'secret', keepAlive: true);
+
+        foreach ([1, 2] as $attempt) {
+            try {
+                $transport->send($this->email());
+                $this->fail('Expected a TransportException on attempt ' . $attempt . '.');
+            } catch (TransportException $e) {
+                $this->assertSame(550, $e->getCode());
+            }
+        }
+
+        $this->assertSame(2, $client->openCount);
+        $this->assertSame(2, substr_count($client->conversation(), 'AUTH LOGIN'));
+    }
+
+    public function testTheOrcptParameterIsXtextEncodedSoAnAddressCannotAddParameters(): void
+    {
+        $client = new FakeSocketClient([
+            "220 hi\r\n", "250 ehlo\r\n", "250 from\r\n", "250 rcpt\r\n", "354 data\r\n", "250 queued\r\n", "221 bye\r\n",
+        ]);
+
+        $this->transport($client, dsn: true)->send($this->email(to: ['v@x.com NOTIFY=NEVER+a=b']));
+
+        $this->assertStringContainsString(
+            'ORCPT=rfc822;v@x.com+20NOTIFY+3DNEVER+2Ba+3Db' . "\r\n",
+            $client->conversation(),
+        );
+        $this->assertStringNotContainsString('ORCPT=rfc822;v@x.com NOTIFY', $client->conversation());
+    }
 }

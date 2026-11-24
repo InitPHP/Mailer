@@ -91,13 +91,15 @@ final class MailTransportTest extends TestCase
     }
 
     /**
-     * @return array<string, array{list<string>, string, array<string, string>}>
+     * @return array<string, array{list<string>, string, array<string, string>, 3?: list<string>}>
      */
     public static function unsafeEmails(): array
     {
         return [
             'recipient with a line break' => [["t@x.com\nBcc: e@z.com"], 'Subject', ['X-A' => 'v']],
             'recipient with an angle bracket' => [['t@x.com> NOTIFY=NEVER'], 'Subject', ['X-A' => 'v']],
+            'bcc with an angle bracket' => [['t@x.com'], 'Subject', ['X-A' => 'v'], ['b@x.com> NOTIFY=NEVER']],
+            'bcc with a NUL' => [['t@x.com'], 'Subject', ['X-A' => 'v'], ["b@x.com\0x"]],
             'subject with a line break'   => [['t@x.com'], "s\nX-Inj: 1", ['X-A' => 'v']],
             'header value with a line break' => [['t@x.com'], 'Subject', ['X-A' => "v\nX-B: 1"]],
             'header name with a line break'  => [['t@x.com'], 'Subject', ["X-A\nX-B" => 'v']],
@@ -109,14 +111,15 @@ final class MailTransportTest extends TestCase
      *
      * @param list<string>          $to
      * @param array<string, string> $headers
+     * @param list<string>          $bcc
      */
-    public function testRefusesAnEmailBuiltByHandWithInjectableFields(array $to, string $subject, array $headers): void
+    public function testRefusesAnEmailBuiltByHandWithInjectableFields(array $to, string $subject, array $headers, array $bcc = []): void
     {
         $email = new PreparedEmail(
             new Address('from@example.com'),
             $to,
             [],
-            [],
+            $bcc,
             $subject,
             $headers,
             'Content-Type: text/plain; charset=UTF-8',

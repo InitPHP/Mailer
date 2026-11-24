@@ -83,14 +83,13 @@ class Mailer
     private const PROTOCOLS = ['mail', 'sendmail', 'smtp'];
 
     /**
-     * Lower-cased names of the headers the library writes itself (or leaves to
-     * the transport); a custom header with one of these names is dropped.
+     * Lower-cased names of the content headers every message gets from the MIME
+     * builder; a custom header with one of these names is always dropped. The
+     * other headers the library writes are known only while the message is built
+     * (see {@see buildGeneralHeaders()}): `Cc` is written only when there are CC
+     * recipients, and `To`, `Subject` and `Bcc` are left to the transport.
      */
-    private const RESERVED_HEADERS = [
-        'to', 'cc', 'bcc', 'subject', 'from', 'reply-to', 'return-path', 'date',
-        'user-agent', 'x-sender', 'x-mailer', 'x-priority', 'message-id', 'mime-version',
-        'content-type', 'content-transfer-encoding',
-    ];
+    private const CONTENT_HEADERS = ['content-type', 'content-transfer-encoding'];
 
     /* ----- Mutable settings (initialised from config, changeable via setters) ----- */
 
@@ -219,8 +218,12 @@ class Mailer
      * Adds an arbitrary header (for example `List-Unsubscribe`). CR, LF and NUL
      * are stripped from the value to prevent header injection; a header name
      * that is not made of printable ASCII characters other than `:` is
-     * rejected. Reserved headers managed by the library (From, To, Subject, …)
-     * take precedence, whatever the case of the name.
+     * rejected. A header the library writes itself for the message (From,
+     * Reply-To, Date, Message-ID, Cc when there are CC recipients, To, Subject,
+     * Bcc when there are BCC recipients, …) takes precedence over a custom header
+     * of the same name, whatever the case; use setCC() and setBCC() for
+     * recipients. A custom `Cc`, `Bcc`, `To` or `Subject` the library does not
+     * write is passed through unchanged.
      *
      * @throws MailerException When the header name is not a valid field name.
      */
@@ -671,11 +674,6 @@ class Mailer
     private function buildGeneralHeaders(Address $from, Address $replyTo): array
     {
         $headers = [];
-        foreach ($this->customHeaders as $name => $value) {
-            if (!\in_array(strtolower((string) $name), self::RESERVED_HEADERS, true)) {
-                $headers[(string) $name] = $value;
-            }
-        }
         $headers['Date'] = $this->date;
         $headers['From'] = $this->formatAddressHeader($from);
         $headers['Return-Path'] = '<' . ($this->returnPath ?? $from->getEmail()) . '>';
@@ -690,7 +688,18 @@ class Mailer
         $headers['Message-ID'] = $this->getMessageID();
         $headers['MIME-Version'] = '1.0';
 
-        return $headers;
+        // A custom header the library also writes loses, whatever the case of
+        // its name. One the library does not write for this message is kept.
+        $managed = HeaderRenderer::names($headers);
+        $custom = [];
+        foreach ($this->customHeaders as $name => $value) {
+            $key = strtolower(trim((string) $name));
+            if (!isset($managed[$key]) && !\in_array($key, self::CONTENT_HEADERS, true)) {
+                $custom[(string) $name] = $value;
+            }
+        }
+
+        return $custom + $headers;
     }
 
     /**

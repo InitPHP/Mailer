@@ -19,6 +19,7 @@ use InitPHP\Mailer\Exception\MailerException;
 
 use function preg_match;
 use function preg_replace;
+use function strtolower;
 use function trim;
 
 /**
@@ -51,6 +52,51 @@ final class HeaderRenderer
         }
 
         return $out;
+    }
+
+    /**
+     * The set of header names in `$headers`, lower-cased and trimmed, as the keys
+     * of an array (`['from' => true, …]`).
+     *
+     * @param array<string, string> $headers
+     *
+     * @return array<string, true>
+     */
+    public static function names(array $headers): array
+    {
+        $names = [];
+        foreach ($headers as $name => $_) {
+            $names[strtolower(trim((string) $name))] = true;
+        }
+
+        return $names;
+    }
+
+    /**
+     * `$headers` without the headers named in `$names`, compared without regard
+     * to case or surrounding whitespace. Transports use it to drop a custom
+     * header they are about to write themselves.
+     *
+     * @param array<string, string> $headers
+     * @param list<string>          $names
+     *
+     * @return array<string, string>
+     */
+    public static function without(array $headers, array $names): array
+    {
+        $drop = [];
+        foreach ($names as $name) {
+            $drop[strtolower(trim($name))] = true;
+        }
+
+        $kept = [];
+        foreach ($headers as $name => $value) {
+            if (!isset($drop[strtolower(trim((string) $name))])) {
+                $kept[(string) $name] = $value;
+            }
+        }
+
+        return $kept;
     }
 
     /**

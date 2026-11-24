@@ -32,6 +32,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   forgets the "authenticated" flag. Before, the socket stayed open, so the next
   `send()` skipped `STARTTLS` and wrote `AUTH LOGIN` with the base64 credentials
   in clear text. A greeting other than `220` is now an error.
+- With `DSN` on, the `ORCPT` address is xtext-encoded (RFC 3461); before, a space
+  in an address (possible with `validate` off) could append SMTP parameters.
 - `StreamSocketClient::enableCrypto()` refuses to start TLS while clear-text
   bytes are still in the read buffer (STARTTLS response injection).
 - The `Message-ID` domain is taken from the parsed sender, not from the raw
@@ -40,10 +42,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   discarded.
 - A `<` or `>` inside an address is rejected (even with `validate` off): it could
   close the SMTP path and add parameters (`RCPT TO:<a@x.com> NOTIFY=NEVER>`).
-- `setHeader()`: reserved headers win whatever the case of the name (a custom
-  `from`, `BCC` or `Subject` is dropped instead of added as a second header), and
-  a name with a space, a colon or any non-printable or non-ASCII character throws
-  a `MailerException`.
+- `setHeader()`: a header the library writes itself for the message wins over a
+  custom one of the same name whatever the case (a custom `from`, or `bcc` next
+  to a real BCC list, is dropped instead of added as a second header). A header
+  the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
+  without `setCC()`/`setBCC()` still adds that header. A name with a space, a
+  colon or any non-printable or non-ASCII character throws a `MailerException`.
 - `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
   dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.
 - A `"` or `\` in an attachment name is escaped inside the quoted `name`

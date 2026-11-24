@@ -314,9 +314,6 @@ final class HeaderInjectionTest extends TestCase
     {
         return [
             'lower-case from'      => ['from'],
-            'upper-case BCC'       => ['BCC'],
-            'mixed-case Subject'   => ['sUbJeCt'],
-            'to'                   => ['to'],
             'message-id'           => ['message-id'],
             'content-type'         => ['Content-Type'],
             'return-path'          => ['RETURN-PATH'],
@@ -399,5 +396,34 @@ final class HeaderInjectionTest extends TestCase
         $this->expectException(MailerException::class);
 
         $mailer->send();
+    }
+
+    public function testACustomHeaderTheLibraryDoesNotWriteIsKept(): void
+    {
+        $this->mailer()
+            ->setFrom('s@example.com')
+            ->setTo('a@example.com')
+            ->setHeader('Cc', 'c@co.example')
+            ->setHeader('Bcc', 'archive@co.example')
+            ->setHeader('X-Keep', 'kept')
+            ->send();
+
+        $headers = $this->transport->last()->headers;
+        self::assertSame('c@co.example', $headers['Cc']);
+        self::assertSame('archive@co.example', $headers['Bcc']);
+    }
+
+    public function testACustomCcLosesToTheRealCcWhateverTheCase(): void
+    {
+        $this->mailer()
+            ->setFrom('s@example.com')
+            ->setTo('a@example.com')
+            ->setCC('real@example.com')
+            ->setHeader('cc', 'archive@co.example')
+            ->send();
+
+        $headers = $this->transport->last()->headers;
+        self::assertSame('real@example.com', $headers['Cc']);
+        self::assertArrayNotHasKey('cc', $headers);
     }
 }

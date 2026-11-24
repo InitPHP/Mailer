@@ -59,7 +59,9 @@ final class MailTransport implements TransportInterface
         EmailValidator::assertSafeAddresses([...$email->to, ...$email->bcc]);
         HeaderRenderer::assertSafe('Subject', $email->subject);
 
-        $headers = $email->headers;
+        // To and Subject travel as mail() arguments, so a custom header of that
+        // name would only duplicate them.
+        $headers = HeaderRenderer::without($email->headers, $email->bcc === [] ? ['To', 'Subject'] : ['To', 'Subject', 'Bcc']);
         if ($email->bcc !== []) {
             $headers['Bcc'] = implode(', ', $email->bcc);
         }

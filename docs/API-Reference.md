@@ -84,8 +84,11 @@ Promotes a previously added attachment (matched by its path/name) to an inline
 ## Formatting & headers
 
 ### `setHeader(string $header, string $value): self`
-Adds a custom header. CR, LF and NUL are stripped from the value;
-library-managed headers take precedence, whatever the case of the name.
+Adds a custom header. CR, LF and NUL are stripped from the value. A header the
+library writes for the message itself (From, To, Subject, Cc with CC recipients,
+Bcc with BCC recipients on sendmail and `mail()`, Date, Message-ID, …) wins over
+a custom one of the same name, whatever the case; one it does not write is kept
+as you set it. Use `setCC()`/`setBCC()` for recipients, not headers.
 **Throws** `MailerException` when the header name is not printable ASCII
 without `:` or spaces.
 

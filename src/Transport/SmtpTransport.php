@@ -27,6 +27,7 @@ use function array_merge;
 use function base64_encode;
 use function implode;
 use function preg_replace;
+use function preg_replace_callback;
 use function strncmp;
 use function strstr;
 use function substr;
@@ -74,7 +75,7 @@ final class SmtpTransport implements TransportInterface
             throw new TransportException('The SMTP client hostname must not contain a line break or a NUL character.');
         }
 
-        $headers = $email->headers;
+        $headers = HeaderRenderer::without($email->headers, ['To', 'Subject']);
         $headers['To'] = implode(', ', $email->to);
         $headers['Subject'] = $email->subject;
         $message = HeaderRenderer::render($headers, $this->newline)
@@ -225,18 +226,28 @@ final class SmtpTransport implements TransportInterface
     private function rcpt(string $address): string
     {
         if ($this->dsn) {
-            return 'RCPT TO:<' . $address . '> NOTIFY=SUCCESS,DELAY,FAILURE ORCPT=rfc822;' . $address;
+            return 'RCPT TO:<' . $address . '> NOTIFY=SUCCESS,DELAY,FAILURE ORCPT=rfc822;' . $this->xtext($address);
         }
 
         return 'RCPT TO:<' . $address . '>';
     }
 
+    /**
+     * Encodes an address as RFC 3461 `xtext` for the `ORCPT` parameter: every
+     * byte outside `!`..`~`, and `+` and `=` themselves, becomes `+XX`, so a
+     * space or another delimiter in an address cannot start a new parameter.
+     */
+    private function xtext(string $value): string
+    {
+        return (string) preg_replace_callback(
+            '/[^\x21-\x2A\x2C-\x3C\x3E-\x7E]/',
+            static fn(array $match): string => \sprintf('+%02X', \ord($match[0])),
+            $value,
+        );
+    }
+
     private function command(string $command, int $expected): string
     {
-        if (EmailValidator::hasLineBreakOrNul($command)) {
-            throw new TransportException('An SMTP command must not contain a line break or a NUL character.');
-        }
-
         $this->client->write($command . $this->newline);
         $reply = $this->readReply();
         if ($this->code($reply) !== $expected) {

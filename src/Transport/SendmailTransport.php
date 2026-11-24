@@ -55,7 +55,7 @@ final class SendmailTransport implements TransportInterface
         $from = $email->from->getEmail();
         $fromArg = $this->validator->isShellSafe($from) ? '-f ' . $from : '';
 
-        $headers = $email->headers;
+        $headers = HeaderRenderer::without($email->headers, $email->bcc === [] ? ['To', 'Subject'] : ['To', 'Subject', 'Bcc']);
         $headers['To'] = implode(', ', $email->to);
         $headers['Subject'] = $email->subject;
         if ($email->bcc !== []) {

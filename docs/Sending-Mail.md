@@ -122,11 +122,19 @@ repeatedly. If any batch fails, the failure is thrown.
 Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
 prevent header injection (a trailing newline in a value is harmless; it is just
 removed). A header *name* must be printable ASCII without `:` or spaces, or
-`setHeader()` throws a `MailerException`. Headers the library manages (From,
-Reply-To, Return-Path, To, Cc, Bcc, Subject, Date, Message-ID, MIME-Version,
-User-Agent, X-Mailer, X-Sender, X-Priority, Content-Type,
-Content-Transfer-Encoding) take precedence whatever the case of the name: a
-custom `from` or `BCC` header is dropped, not added next to the real one:
+`setHeader()` throws a `MailerException`.
+
+If the library writes a header itself for this message, its value wins over a
+custom header of the same name, whatever the case of the name: a custom `from`
+is dropped, not added next to the real `From`. That covers From, Reply-To,
+Return-Path, Date, Message-ID, MIME-Version, User-Agent, X-Mailer, X-Sender,
+X-Priority, Content-Type and Content-Transfer-Encoding; `To` and `Subject`; `Cc`
+when you called `setCC()`; and `Bcc` when you called `setBCC()` (sendmail and
+`mail()` write it). A header the library does **not** write is passed through as
+you set it: `setHeader('Cc', …)` with no `setCC()` adds that header. Use
+`setTo()`, `setCC()` and `setBCC()` for recipients — a `Cc` or `Bcc` header set by
+hand is not an envelope recipient, and the SMTP transport never writes a `Bcc`
+header of its own:
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');

@@ -90,9 +90,11 @@ Out-of-range values fall back to 3.
 
 Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
 prevent header injection, a header name that is not printable ASCII without `:`
-or spaces throws a `MailerException`, and the headers the library manages (From, To, Subject, Date,
-Message-ID, MIME-Version, X-*, …) always take precedence over custom ones,
-whatever the case of the custom name.
+or spaces throws a `MailerException`. The headers the library writes itself
+(From, To, Subject, Date, Message-ID, MIME-Version, X-Mailer, …, and Cc/Bcc when
+there are such recipients) win over a custom header of the same name, whatever
+the case; a header the library does not write is kept. See
+[Sending Mail](Sending-Mail.md#custom-headers).
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');
