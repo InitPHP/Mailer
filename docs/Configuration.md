@@ -34,7 +34,7 @@ $mailer = Mailer::newInstance([
 | `priority` | int | `3` | `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3. |
 | `altMessage` | string | `''` | Plain-text alternative for HTML messages. |
 | `userAgent` | string | `'InitPHP Mailer'` | `User-Agent` / `X-Mailer` header value. A CR, LF or NUL throws a `ConfigurationException`. |
-| `validate` | bool | `true` | Validate addresses as they are added. Turning it off removes the format check only; a CR, LF or NUL in an address is rejected either way — see [Error Handling](Error-Handling.md). |
+| `validate` | bool | `true` | Validate addresses as they are added. Turning it off removes the format check only; a CR, LF, NUL, `<` or `>` in an address is rejected either way — see [Error Handling](Error-Handling.md). |
 
 ## Transport selection
 

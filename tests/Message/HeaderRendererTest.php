@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace InitPHP\Mailer\Tests\Message;
 
+use InitPHP\Mailer\Exception\MailerException;
 use InitPHP\Mailer\Message\HeaderRenderer;
 use PHPUnit\Framework\TestCase;
 
@@ -26,5 +27,63 @@ final class HeaderRendererTest extends TestCase
     public function testReturnsEmptyStringForNoHeaders(): void
     {
         $this->assertSame('', HeaderRenderer::render([], "\r\n"));
+    }
+
+    public function testAcceptsAFoldedValue(): void
+    {
+        $out = HeaderRenderer::render(['Subject' => "=?UTF-8?Q?a?=\r\n =?UTF-8?Q?b?="], "\r\n");
+
+        $this->assertSame("Subject: =?UTF-8?Q?a?=\r\n =?UTF-8?Q?b?=\r\n", $out);
+    }
+
+    /**
+     * @dataProvider unsafeValues
+     */
+    public function testRejectsAValueThatWouldStartAnotherHeader(string $value): void
+    {
+        $this->expectException(MailerException::class);
+
+        HeaderRenderer::render(['X-A' => $value], "\r\n");
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function unsafeValues(): array
+    {
+        return [
+            'CRLF'                => ["v\r\nBcc: e@z.com"],
+            'LF'                  => ["v\nBcc: e@z.com"],
+            'CR'                  => ["v\rBcc: e@z.com"],
+            'NUL'                 => ["v\0w"],
+            'blank line, then fold' => ["v\r\n\r\n x"],
+        ];
+    }
+
+    /**
+     * @dataProvider invalidNames
+     */
+    public function testRejectsAnInvalidName(string $name): void
+    {
+        $this->expectException(MailerException::class);
+
+        HeaderRenderer::render([$name => 'v'], "\r\n");
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidNames(): array
+    {
+        return [
+            'CRLF'  => ["X\r\nBcc"],
+            'space' => ['X A'],
+            'colon' => ['X:A'],
+        ];
+    }
+
+    public function testDoesNotCheckAnEmptyValue(): void
+    {
+        $this->assertSame('', HeaderRenderer::render(['X-A' => "\n"], "\r\n"));
     }
 }

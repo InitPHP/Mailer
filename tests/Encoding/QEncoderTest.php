@@ -70,4 +70,42 @@ final class QEncoderTest extends TestCase
         $this->assertSame('HelloBcc: x@example.test', iconv_mime_decode($encoded, 0, 'UTF-8'));
         $this->assertStringNotContainsString("\0", $encoded);
     }
+
+    public function testInvalidUtf8IsReplacedWithoutNotices(): void
+    {
+        $encoded = $this->utf8()->encode("Caf\xE9 ok \xFF");
+
+        $this->assertSame('Caf? ok ?', iconv_mime_decode($encoded, 0, 'UTF-8'));
+    }
+
+    public function testInvalidUtf8InALongValueStillFolds(): void
+    {
+        $encoded = $this->utf8()->encode(str_repeat("\xFF ab", 40));
+
+        $this->assertSame(str_repeat('? ab', 40), iconv_mime_decode($encoded, 0, 'UTF-8'));
+    }
+
+    public function testANonUtf8CharsetProducesValidEncodedWords(): void
+    {
+        $encoder = new QEncoder('ISO-8859-1', "\r\n");
+
+        $encoded = $encoder->encode("Caf\xE9");
+
+        $this->assertStringStartsWith('=?ISO-8859-1?Q?', $encoded);
+        $this->assertSame("Caf\xE9", iconv_mime_decode($encoded, 0, 'ISO-8859-1'));
+    }
+
+    public function testANonUtf8CharsetFoldsLongValuesIntoDecodableLines(): void
+    {
+        $encoder = new QEncoder('ISO-8859-9', "\r\n");
+        $subject = str_repeat("\xFE ok ", 30);
+
+        $encoded = $encoder->encode($subject);
+
+        $this->assertStringContainsString("\r\n =?ISO-8859-9?Q?", $encoded);
+        foreach (explode("\r\n", $encoded) as $line) {
+            $this->assertLessThanOrEqual(78, \strlen($line));
+        }
+        $this->assertSame($subject, iconv_mime_decode($encoded, 0, 'ISO-8859-9'));
+    }
 }

@@ -50,6 +50,8 @@ final class SendmailTransport implements TransportInterface
 
     public function send(PreparedEmail $email): void
     {
+        EmailValidator::assertSafeAddresses([...$email->to, ...$email->bcc]);
+
         $from = $email->from->getEmail();
         $fromArg = $this->validator->isShellSafe($from) ? '-f ' . $from : '';
 

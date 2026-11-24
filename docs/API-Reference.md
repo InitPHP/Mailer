@@ -57,7 +57,8 @@ Sets the body (plain text or HTML depending on the mail type). Carriage returns
 are stripped and surrounding blank lines trimmed.
 
 ### `setAltMessage(string $str): self`
-Sets the plain-text alternative used for HTML messages.
+Sets the plain-text alternative used for HTML messages. Carriage returns are
+stripped, like in `setMessage()`.
 
 ### `setMailType(string $type = 'text'): self`
 `'html'` for the value `html` (case-insensitive), otherwise `'text'`.
@@ -84,8 +85,9 @@ Promotes a previously added attachment (matched by its path/name) to an inline
 
 ### `setHeader(string $header, string $value): self`
 Adds a custom header. CR, LF and NUL are stripped from the value;
-library-managed headers take precedence. **Throws** `MailerException` when the
-header name contains a CR, LF or NUL.
+library-managed headers take precedence, whatever the case of the name.
+**Throws** `MailerException` when the header name is not printable ASCII
+without `:` or spaces.
 
 ### `setPriority(int $n = 3): self`
 `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3.
@@ -146,6 +148,8 @@ Overrides the protocol-derived transport (used in [Testing](Testing.md)).
 
 ### `setBoundaryFactory(callable $factory): self`
 Overrides the MIME boundary generator: `callable(string $prefix): string`.
+`send()` throws a `MailerException` for an empty boundary or one containing a
+quote, CR, LF or NUL.
 
 ---
 

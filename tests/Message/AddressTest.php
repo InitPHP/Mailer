@@ -89,4 +89,41 @@ final class AddressTest extends TestCase
 
         $this->assertSame('a@example.com', $address->getEmail());
     }
+
+    public function testParseRejectsALineBreakHiddenInTheNameThatWouldBeDiscarded(): void
+    {
+        $this->expectException(InvalidAddressException::class);
+
+        // The explicit name wins, so the embedded "name" is thrown away; the
+        // line break must be caught before that.
+        Address::parse("Evil\rBcc: x@example.test <a@example.com>", 'Explicit');
+    }
+
+    /**
+     * @dataProvider angleBrackets
+     */
+    public function testRejectsAnAngleBracketInsideTheAddress(string $email): void
+    {
+        $this->expectException(InvalidAddressException::class);
+
+        new Address($email);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function angleBrackets(): array
+    {
+        return [
+            'closing'  => ['v@x.com> NOTIFY=NEVER'],
+            'opening'  => ['v@x.com<y'],
+        ];
+    }
+
+    public function testParseRejectsATrailingSmtpParameter(): void
+    {
+        $this->expectException(InvalidAddressException::class);
+
+        Address::parse('Name <v@x.com> SIZE=1>');
+    }
 }

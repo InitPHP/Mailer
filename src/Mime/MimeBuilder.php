@@ -17,8 +17,10 @@ namespace InitPHP\Mailer\Mime;
 
 use InitPHP\Mailer\Encoding\QuotedPrintableEncoder;
 use InitPHP\Mailer\Encoding\WordWrapper;
+use InitPHP\Mailer\Exception\MailerException;
 use InitPHP\Mailer\Message\Attachment;
 
+use function addcslashes;
 use function mb_strlen;
 use function preg_match;
 use function preg_replace;
@@ -117,7 +119,7 @@ final class MimeBuilder
             ];
         }
 
-        $boundary = ($this->boundaryFactory)('B_ALT_');
+        $boundary = $this->boundary('B_ALT_');
         $body = $this->mimePreamble() . $nl . $nl
             . '--' . $boundary . $nl
             . 'Content-Type: text/plain; charset=' . $this->charset . $nl
@@ -143,7 +145,7 @@ final class MimeBuilder
     private function buildPlainAttach(string $body, array $attachments, string $encoding): array
     {
         $nl = $this->newline;
-        $boundary = ($this->boundaryFactory)('B_ATC_');
+        $boundary = $this->boundary('B_ATC_');
 
         $out = $this->mimePreamble() . $nl . $nl
             . '--' . $boundary . $nl
@@ -166,7 +168,7 @@ final class MimeBuilder
     private function buildHtmlAttach(string $html, string $altMessage, array $attachments, string $encoding): array
     {
         $nl = $this->newline;
-        $altBoundary = ($this->boundaryFactory)('B_ALT_');
+        $altBoundary = $this->boundary('B_ALT_');
         $body = '';
         $contentHeaders = '';
         $lastBoundary = null;
@@ -174,12 +176,12 @@ final class MimeBuilder
         $atcBoundary = null;
 
         if ($this->hasMultipart($attachments, Attachment::MULTIPART_MIXED)) {
-            $atcBoundary = ($this->boundaryFactory)('B_ATC_');
+            $atcBoundary = $this->boundary('B_ATC_');
             $contentHeaders = 'Content-Type: multipart/mixed; boundary="' . $atcBoundary . '"';
             $lastBoundary = $atcBoundary;
         }
         if ($this->hasMultipart($attachments, Attachment::MULTIPART_RELATED)) {
-            $relBoundary = ($this->boundaryFactory)('B_REL_');
+            $relBoundary = $this->boundary('B_REL_');
             $relHeader = 'Content-Type: multipart/related; boundary="' . $relBoundary . '"';
             if ($lastBoundary !== null) {
                 $body .= '--' . $lastBoundary . $nl . $relHeader;
@@ -190,7 +192,7 @@ final class MimeBuilder
             $lastBoundary = $relBoundary;
         }
         if ($lastBoundary === null) {
-            $atcBoundary = ($this->boundaryFactory)('B_ATC_');
+            $atcBoundary = $this->boundary('B_ATC_');
             $contentHeaders = 'Content-Type: multipart/mixed; boundary="' . $atcBoundary . '"';
             $lastBoundary = $atcBoundary;
         }
@@ -249,7 +251,7 @@ final class MimeBuilder
             }
             $cid = $attachment->getCid();
             $body .= '--' . $boundary . $this->newline
-                . 'Content-Type: ' . $attachment->getMimeType() . '; name="' . $attachment->getName() . '"' . $this->newline
+                . 'Content-Type: ' . $attachment->getMimeType() . '; name="' . addcslashes($attachment->getName(), '"\\') . '"' . $this->newline
                 . 'Content-Disposition: ' . $attachment->getDisposition() . ';' . $this->newline
                 . 'Content-Transfer-Encoding: base64' . $this->newline
                 . ($cid !== null ? 'Content-ID: <' . $cid . '>' . $this->newline : '')
@@ -260,6 +262,22 @@ final class MimeBuilder
         if ($written) {
             $body .= '--' . $boundary . '--';
         }
+    }
+
+    /**
+     * Asks the factory for a boundary and refuses one that could break out of
+     * the quoted `boundary="..."` parameter or start another header.
+     *
+     * @throws MailerException
+     */
+    private function boundary(string $prefix): string
+    {
+        $boundary = ($this->boundaryFactory)($prefix);
+        if ($boundary === '' || preg_match('/[\r\n\0"]/', $boundary) === 1) {
+            throw new MailerException('A MIME boundary must not be empty or contain a quote, a line break or a NUL character.');
+        }
+
+        return $boundary;
     }
 
     private function mimePreamble(): string

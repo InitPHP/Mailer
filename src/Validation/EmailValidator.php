@@ -73,6 +73,35 @@ final class EmailValidator
     }
 
     /**
+     * Whether the address contains a character that would end or extend an SMTP
+     * path or a header line: CR, LF, NUL, `<` or `>`. An address that has one
+     * could add parameters (`<a@b.c> SIZE=1`) to `MAIL FROM` / `RCPT TO`.
+     */
+    public static function hasUnsafeAddressChar(string $value): bool
+    {
+        return preg_match('/[\r\n\0<>]/', $value) === 1;
+    }
+
+    /**
+     * Throws when any address contains a character that {@see hasUnsafeAddressChar()}
+     * reports. Checked whether or not address validation is on.
+     *
+     * @param iterable<string> $emails
+     *
+     * @throws InvalidAddressException
+     */
+    public static function assertSafeAddresses(iterable $emails): void
+    {
+        foreach ($emails as $email) {
+            if (self::hasUnsafeAddressChar($email)) {
+                throw new InvalidAddressException(
+                    'An e-mail address must not contain a line break, a NUL character, "<" or ">".',
+                );
+            }
+        }
+    }
+
+    /**
      * Whether the address is safe to pass to a shell as a `-f` envelope sender.
      * It must both pass the e-mail filter unchanged and match a conservative
      * local-part/domain pattern, so no shell metacharacters can slip through.

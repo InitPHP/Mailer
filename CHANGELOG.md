@@ -25,6 +25,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   NUL (`InvalidAddressException` / `TransportException`) instead of writing it to
   the socket.
 
+### Fixed
+
+- **SMTP connection state after a failure.** A failed greeting, `EHLO`, `STARTTLS`,
+  TLS handshake, `AUTH`, recipient or message now closes the connection and
+  forgets the "authenticated" flag. Before, the socket stayed open, so the next
+  `send()` skipped `STARTTLS` and wrote `AUTH LOGIN` with the base64 credentials
+  in clear text. A greeting other than `220` is now an error.
+- `StreamSocketClient::enableCrypto()` refuses to start TLS while clear-text
+  bytes are still in the read buffer (STARTTLS response injection).
+- The `Message-ID` domain is taken from the parsed sender, not from the raw
+  `fromEmail` option, and `Address::parse()` checks the whole input before the
+  display name is split off, so a CR, LF or NUL cannot hide in the part that is
+  discarded.
+- A `<` or `>` inside an address is rejected (even with `validate` off): it could
+  close the SMTP path and add parameters (`RCPT TO:<a@x.com> NOTIFY=NEVER>`).
+- `setHeader()`: reserved headers win whatever the case of the name (a custom
+  `from`, `BCC` or `Subject` is dropped instead of added as a second header), and
+  a name with a space, a colon or any non-printable or non-ASCII character throws
+  a `MailerException`.
+- `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
+  dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.
+- A `"` or `\` in an attachment name is escaped inside the quoted `name`
+  parameter; the generated Content-ID keeps only `[A-Za-z0-9._-]` of the name.
+- `QEncoder`: input that is not valid UTF-8 is replaced with `?` instead of
+  raising iconv notices and producing garbage, and the fallback encoder for a
+  non-UTF-8 charset writes the missing `=` before each byte, so the encoded-words
+  are valid again.
+- `HeaderRenderer` (used by all three transports) and the `mail()` / sendmail
+  transports refuse a header name that is not a field name, a value with a line
+  break other than a fold (a line break followed by a space or tab), and
+  recipients with a line break or angle bracket, so a `PreparedEmail` built by
+  hand cannot inject headers. A MIME boundary from `setBoundaryFactory()` that is
+  empty or contains a quote, CR, LF or NUL throws a `MailerException`.
+
 ## [3.0.0] - 2026-11-22
 
 ### Changed (breaking)

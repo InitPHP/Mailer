@@ -20,6 +20,7 @@ use function iconv_mime_encode;
 use function iconv_strlen;
 use function iconv_substr;
 use function implode;
+use function mb_scrub;
 use function mb_strlen;
 use function mb_substr;
 use function str_replace;
@@ -45,6 +46,9 @@ final class QEncoder
         $chars = null;
 
         if ($this->charset === 'UTF-8') {
+            // Bytes that are not valid UTF-8 make the iconv functions raise
+            // notices and produce garbage; replace them with "?" first.
+            $str = mb_scrub($str, 'UTF-8');
             $output = @iconv_mime_encode('', $str, [
                 'scheme'           => 'Q',
                 'line-length'      => 76,
@@ -71,7 +75,7 @@ final class QEncoder
                 $slice = iconv_substr($str, $i, 1, $this->charset);
                 $chr = '=' . implode('=', str_split(strtoupper(bin2hex($slice === false ? '' : $slice)), 2));
             } else {
-                $chr = strtoupper(bin2hex($str[$i]));
+                $chr = '=' . strtoupper(bin2hex($str[$i]));
             }
 
             $chrLength = mb_strlen($chr, '8bit');

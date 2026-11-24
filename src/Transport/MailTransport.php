@@ -56,6 +56,9 @@ final class MailTransport implements TransportInterface
 
     public function send(PreparedEmail $email): void
     {
+        EmailValidator::assertSafeAddresses([...$email->to, ...$email->bcc]);
+        HeaderRenderer::assertSafe('Subject', $email->subject);
+
         $headers = $email->headers;
         if ($email->bcc !== []) {
             $headers['Bcc'] = implode(', ', $email->bcc);

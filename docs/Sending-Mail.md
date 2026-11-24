@@ -71,11 +71,21 @@ try {
 ```
 
 Disable validation with `'validate' => false` only if you need to accept
-addresses the PHP filter rejects, and only for addresses you control. A CR, LF
-or NUL inside an address or display name is rejected with an
-`InvalidAddressException` even then, so a request-supplied address cannot inject
-headers or recipients — see
+addresses the PHP filter rejects, and only for addresses you control. A CR, LF,
+NUL, `<` or `>` inside an address, or a CR, LF or NUL in a display name, is
+rejected with an `InvalidAddressException` even then, so a request-supplied
+address cannot start another header or add parameters to an SMTP command — see
 [Error Handling](Error-Handling.md#fail-fast-on-bad-input).
+
+That check does **not** stop a request-supplied *string* from naming several
+recipients: `setTo()` splits a string on commas and whitespace, so
+`"victim@example.com,other@example.com"` is two recipients (with validation off,
+a comma inside an array item is not split either, and the `To` header then lists
+both). Pass a single untrusted address as an array item and keep `validate` on:
+
+```php
+$mailer->setTo([$_POST['email']]); // one address; validation rejects "a@x.com,b@x.com"
+```
 
 ## Subject and body
 
@@ -110,9 +120,13 @@ repeatedly. If any batch fails, the failure is thrown.
 ## Custom headers
 
 Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
-prevent header injection, a header *name* containing one of them throws a
-`MailerException`, and headers the library manages (From, To, Subject, …) take
-precedence:
+prevent header injection (a trailing newline in a value is harmless; it is just
+removed). A header *name* must be printable ASCII without `:` or spaces, or
+`setHeader()` throws a `MailerException`. Headers the library manages (From,
+Reply-To, Return-Path, To, Cc, Bcc, Subject, Date, Message-ID, MIME-Version,
+User-Agent, X-Mailer, X-Sender, X-Priority, Content-Type,
+Content-Transfer-Encoding) take precedence whatever the case of the name: a
+custom `from` or `BCC` header is dropped, not added next to the real one:
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');

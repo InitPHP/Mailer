@@ -132,4 +132,14 @@ final class AttachmentTest extends TestCase
 
         Attachment::fromPath($dir . '/a.txt', '', "b.txt\r\nBcc: x@example.test", 'text/plain');
     }
+
+    public function testTheContentIdKeepsOnlySafeCharactersOfTheName(): void
+    {
+        $attachment = Attachment::fromContent('x', 'my logo">.png', 'inline');
+
+        $cid = $attachment->makeInline();
+
+        $this->assertSame(1, preg_match('/\A[A-Za-z0-9._-]+@[0-9a-f.]+\z/', $cid));
+        $this->assertStringStartsWith('my_logo__.png@', $cid);
+    }
 }

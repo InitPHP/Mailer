@@ -25,6 +25,7 @@ use function file_get_contents;
 use function is_file;
 use function is_readable;
 use function mime_content_type;
+use function preg_replace;
 use function uniqid;
 
 /**
@@ -122,7 +123,8 @@ final class Attachment
     public function makeInline(): string
     {
         $this->multipart = self::MULTIPART_RELATED;
-        $this->cid = uniqid(basename($this->name) . '@', true);
+        // The name is user-supplied; keep only characters that are safe inside `<...>`.
+        $this->cid = uniqid((string) preg_replace('/[^A-Za-z0-9._-]/', '_', basename($this->name)) . '@', true);
 
         return $this->cid;
     }

@@ -16,7 +16,6 @@ declare(strict_types=1);
 namespace InitPHP\Mailer\Transport;
 
 use InitPHP\Mailer\Exception\ConfigurationException;
-use InitPHP\Mailer\Exception\InvalidAddressException;
 use InitPHP\Mailer\Exception\TransportException;
 use InitPHP\Mailer\Message\HeaderRenderer;
 use InitPHP\Mailer\Message\PreparedEmail;
@@ -65,43 +64,57 @@ final class SmtpTransport implements TransportInterface
             throw new ConfigurationException('No SMTP host has been configured.');
         }
 
-        // The recipients are written into SMTP commands (the sender is an
-        // Address, which already refuses them); check them before connecting so a
-        // bad one never reaches the wire, whatever the caller built the message with.
-        foreach ([...$email->to, ...$email->cc, ...$email->bcc] as $address) {
-            if (EmailValidator::hasLineBreakOrNul($address)) {
-                throw new InvalidAddressException(
-                    'An e-mail address must not contain a line break or a NUL character.',
-                );
-            }
+        // Everything that is written to the wire is checked, and the message is
+        // rendered, before a connection is opened: a bad recipient, hostname or
+        // header never reaches the socket, and never leaves a half-open
+        // connection behind. The sender is an Address, which already refuses
+        // unsafe characters.
+        EmailValidator::assertSafeAddresses([...$email->to, ...$email->cc, ...$email->bcc]);
+        if (EmailValidator::hasLineBreakOrNul($this->hostname)) {
+            throw new TransportException('The SMTP client hostname must not contain a line break or a NUL character.');
         }
-
-        $this->connect();
-        $this->authenticate();
-
-        $this->command('MAIL FROM:<' . $email->from->getEmail() . '>', 250);
-        foreach (array_merge($email->to, $email->cc, $email->bcc) as $recipient) {
-            if ($recipient !== '') {
-                $this->command($this->rcpt($recipient), 250);
-            }
-        }
-        $this->command('DATA', 354);
 
         $headers = $email->headers;
         $headers['To'] = implode(', ', $email->to);
         $headers['Subject'] = $email->subject;
         $message = HeaderRenderer::render($headers, $this->newline)
             . $email->contentHeaders . $this->newline . $this->newline . $email->body;
-        // Dot-stuffing: any line starting with "." must be escaped to "..".
-        $message = (string) preg_replace('/^\./m', '..', $message);
+        // Dot-stuffing: any line starting with "." must be escaped to "..". A line
+        // starts at the beginning of the message and after any CR or LF, because
+        // the configured newline may be a bare "\r" or "\n\r".
+        $message = (string) preg_replace('/(?<![^\r\n])\./', '..', $message);
 
-        $this->client->write($message . $this->newline . '.' . $this->newline);
-        $reply = $this->readReply();
-        if (strncmp($reply, '250', 3) !== 0) {
-            throw new TransportException('The SMTP server rejected the message: ' . trim($reply), $this->code($reply));
+        try {
+            $this->connect();
+            $this->authenticate();
+
+            $this->command('MAIL FROM:<' . $email->from->getEmail() . '>', 250);
+            foreach (array_merge($email->to, $email->cc, $email->bcc) as $recipient) {
+                if ($recipient !== '') {
+                    $this->command($this->rcpt($recipient), 250);
+                }
+            }
+            $this->command('DATA', 354);
+
+            $this->client->write($message . $this->newline . '.' . $this->newline);
+            $reply = $this->readReply();
+            if (strncmp($reply, '250', 3) !== 0) {
+                throw new TransportException(
+                    'The SMTP server rejected the message: ' . trim($reply),
+                    $this->code($reply),
+                );
+            }
+
+            $this->finish();
+        } catch (Throwable $e) {
+            // The state of the conversation is unknown. Drop the connection so
+            // the next send() starts from a fresh greeting, EHLO, STARTTLS and
+            // AUTH instead of reusing a socket that never finished (or failed)
+            // its TLS upgrade and sending the credentials in clear text.
+            $this->disconnect();
+
+            throw $e;
         }
-
-        $this->finish();
     }
 
     public function __destruct()
@@ -131,7 +144,13 @@ final class SmtpTransport implements TransportInterface
         }
 
         $this->client->open($prefix . $this->host, $this->port, $this->timeout);
-        $this->readReply();
+        $greeting = $this->readReply();
+        if (strncmp($greeting, '220', 3) !== 0) {
+            throw new TransportException(
+                'The SMTP server did not greet the connection: ' . trim($greeting),
+                $this->code($greeting),
+            );
+        }
 
         if ($this->crypto === 'tls') {
             $this->command($this->hello(), 250);
@@ -184,7 +203,18 @@ final class SmtpTransport implements TransportInterface
         }
         $this->client->write('QUIT' . $this->newline);
         $this->readReply();
-        $this->client->close();
+        $this->disconnect();
+    }
+
+    /**
+     * Closes the connection and forgets that it was authenticated.
+     */
+    private function disconnect(): void
+    {
+        $this->authenticated = false;
+        if ($this->client->isOpen()) {
+            $this->client->close();
+        }
     }
 
     private function hello(): string

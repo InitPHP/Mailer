@@ -10,7 +10,11 @@ use InitPHP\Mailer\Mailer;
 use InitPHP\Mailer\Tests\Support\RecordingTransport;
 use PHPUnit\Framework\TestCase;
 
-use function str_contains;
+use function array_keys;
+use function array_map;
+use function array_unique;
+use function iconv_mime_decode;
+use function preg_match;
 
 /**
  * A CR, LF or NUL in a field that ends up in a header or an SMTP command must
@@ -175,10 +179,11 @@ final class HeaderInjectionTest extends TestCase
             ->setSubject("Hello\r\nBcc: attacker@example.test\0")
             ->send();
 
+        // Decoding shows what the header says: with the line breaks left in, the
+        // Q-encoded value would decode to "Hello\r\nBcc: ...".
         $subject = $this->transport->last()->subject;
+        self::assertSame('HelloBcc: attacker@example.test', iconv_mime_decode($subject, 0, 'UTF-8'));
         self::assertStringNotContainsString("\0", $subject);
-        self::assertStringNotContainsString("\nBcc", $subject);
-        self::assertFalse(str_contains($subject, "\r\nBcc"));
     }
 
     public function testAnUnsafeConfiguredSenderIsRejectedAtSendTime(): void
@@ -187,6 +192,211 @@ final class HeaderInjectionTest extends TestCase
             ->setTo('rcpt@example.com');
 
         $this->expectException(InvalidAddressException::class);
+
+        $mailer->send();
+    }
+
+    /**
+     * @return array<string, array{string, string, bool}>
+     */
+    public static function configuredSenders(): array
+    {
+        $cases = [
+            'trailing LF'          => ["a@example.com\n", ''],
+            'trailing CRLF CRLF'   => ["a@example.com\r\n\r\n", ''],
+            'trailing NUL'         => ["a@example.com\0", ''],
+        ];
+        $out = [];
+        foreach ($cases as $label => [$email, $name]) {
+            $out[$label . ', validate on'] = [$email, $name, true];
+            $out[$label . ', validate off'] = [$email, $name, false];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @dataProvider configuredSenders
+     */
+    public function testMessageIdIsBuiltFromTheParsedConfiguredSender(string $email, string $name, bool $validate): void
+    {
+        $mailer = $this->mailer(['fromEmail' => $email, 'fromName' => $name, 'validate' => $validate]);
+
+        self::assertSame(1, preg_match('/\A<[^\r\n\0]+@example\.com>\z/', $mailer->getMessageID()));
+
+        $mailer->setTo('rcpt@example.com')->send();
+        $messageId = $this->transport->last()->headers['Message-ID'];
+        self::assertSame(1, preg_match('/\A<[^\r\n\0]+@example\.com>\z/', $messageId));
+    }
+
+    /**
+     * @dataProvider validationModes
+     */
+    public function testAHiddenLineBreakInTheConfiguredSenderIsRejected(bool $validate): void
+    {
+        // The explicit name wins, so the part of the address that carries the line
+        // breaks is the discarded "display name" of the embedded form.
+        $mailer = $this->mailer([
+            'fromName'  => 'App',
+            'fromEmail' => "x@y\rBcc: evil@z.com\rX: <a@example.com>",
+            'validate'  => $validate,
+        ]);
+
+        try {
+            $mailer->getMessageID();
+            self::fail('getMessageID() accepted an unsafe configured sender.');
+        } catch (InvalidAddressException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->expectException(InvalidAddressException::class);
+        $mailer->setTo('rcpt@example.com')->send();
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function angleBracketAddresses(): array
+    {
+        return [
+            'RCPT parameter' => ['v@x.com> NOTIFY=NEVER'],
+            'MAIL parameter' => ['a@example.com> SIZE=1'],
+            'opening bracket' => ['v@x.com <y'],
+            'inner brackets' => ['v@x<y>.com'],
+        ];
+    }
+
+    /**
+     * @dataProvider angleBracketAddresses
+     */
+    public function testAnglesBracketsCannotAddSmtpParametersWithValidationOff(string $address): void
+    {
+        foreach (['setTo', 'setCC', 'setBCC'] as $method) {
+            try {
+                $this->mailer(['validate' => false])->{$method}([$address]);
+                self::fail($method . '() accepted "' . $address . '".');
+            } catch (InvalidAddressException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        try {
+            $this->mailer(['validate' => false])->setFrom('s@example.com', '', $address);
+            self::fail('setFrom() accepted the return path "' . $address . '".');
+        } catch (InvalidAddressException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->expectException(InvalidAddressException::class);
+        $this->mailer(['validate' => false])->setFrom($address);
+    }
+
+    public function testASurroundingAngleBracketPairStillWorks(): void
+    {
+        $this->mailer(['validate' => false])->setFrom('<s@example.com>')->setTo(['<a@example.com>'])->send();
+
+        self::assertSame(['a@example.com'], $this->transport->last()->to);
+    }
+
+    public function testSetAltMessageStripsCarriageReturns(): void
+    {
+        $this->mailer()->setFrom('s@example.com')->setTo('a@example.com')
+            ->setMailType('html')->setMessage('<p>x</p>')->setAltMessage("one\r\ntwo\r.three\r")->send();
+
+        self::assertStringNotContainsString("\r", $this->transport->last()->body);
+        self::assertStringContainsString("one\ntwo.three", $this->transport->last()->body);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function reservedHeaderNames(): array
+    {
+        return [
+            'lower-case from'      => ['from'],
+            'upper-case BCC'       => ['BCC'],
+            'mixed-case Subject'   => ['sUbJeCt'],
+            'to'                   => ['to'],
+            'message-id'           => ['message-id'],
+            'content-type'         => ['Content-Type'],
+            'return-path'          => ['RETURN-PATH'],
+            'x-mailer'             => ['x-mailer'],
+        ];
+    }
+
+    /**
+     * @dataProvider reservedHeaderNames
+     */
+    public function testReservedHeadersWinWhateverTheCaseOfTheName(string $name): void
+    {
+        $this->mailer()
+            ->setFrom('s@example.com')
+            ->setTo('a@example.com')
+            ->setHeader($name, 'evil@example.test')
+            ->setHeader('X-Keep', 'kept')
+            ->send();
+
+        $headers = $this->transport->last()->headers;
+        $lower = array_map('strtolower', array_keys($headers));
+        self::assertSame(array_unique($lower), $lower, 'No header may appear twice.');
+        self::assertNotContains('evil@example.test', $headers);
+        self::assertSame('kept', $headers['X-Keep']);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidHeaderNames(): array
+    {
+        return [
+            'trailing space' => ['From '],
+            'inner space'    => ['X Y'],
+            'colon'          => ['X: y'],
+            'trailing colon' => ['X-A:'],
+            'tab'            => ["X\tY"],
+            'empty'          => [''],
+            'non-ASCII'      => ['X-Ünï'],
+            'DEL'            => ["X\x7F"],
+        ];
+    }
+
+    /**
+     * @dataProvider invalidHeaderNames
+     */
+    public function testSetHeaderRejectsNamesThatAreNotFieldNames(string $name): void
+    {
+        $this->expectException(MailerException::class);
+
+        $this->mailer()->setHeader($name, 'value');
+    }
+
+    public function testAQuoteInAnAttachmentNameCannotBreakOutOfTheParameter(): void
+    {
+        $this->mailer()->setFrom('s@example.com')->setTo('a@example.com')
+            ->attachContent('x', 'a"; filename="evil.exe', 'attachment', 'text/plain')->send();
+
+        $body = $this->transport->last()->body;
+        self::assertStringContainsString('name="a\\"; filename=\\"evil.exe"', $body);
+    }
+
+    public function testABoundaryFactoryCannotInjectHeaders(): void
+    {
+        $mailer = $this->mailer()->setFrom('s@example.com')->setTo('a@example.com')
+            ->attachContent('x', 'a.txt')
+            ->setBoundaryFactory(static fn(string $prefix): string => "b\"\r\nBcc: e@z.com");
+
+        $this->expectException(MailerException::class);
+
+        $mailer->send();
+    }
+
+    public function testAnEmptyBoundaryIsRejected(): void
+    {
+        $mailer = $this->mailer()->setFrom('s@example.com')->setTo('a@example.com')
+            ->attachContent('x', 'a.txt')
+            ->setBoundaryFactory(static fn(string $prefix): string => '');
+
+        $this->expectException(MailerException::class);
 
         $mailer->send();
     }

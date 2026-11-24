@@ -82,6 +82,16 @@ class Mailer
 
     private const PROTOCOLS = ['mail', 'sendmail', 'smtp'];
 
+    /**
+     * Lower-cased names of the headers the library writes itself (or leaves to
+     * the transport); a custom header with one of these names is dropped.
+     */
+    private const RESERVED_HEADERS = [
+        'to', 'cc', 'bcc', 'subject', 'from', 'reply-to', 'return-path', 'date',
+        'user-agent', 'x-sender', 'x-mailer', 'x-priority', 'message-id', 'mime-version',
+        'content-type', 'content-transfer-encoding',
+    ];
+
     /* ----- Mutable settings (initialised from config, changeable via setters) ----- */
 
     private string $protocol;
@@ -208,15 +218,19 @@ class Mailer
     /**
      * Adds an arbitrary header (for example `List-Unsubscribe`). CR, LF and NUL
      * are stripped from the value to prevent header injection; a header name
-     * containing one of them is rejected. Reserved headers managed by the
-     * library (From, To, Subject, …) take precedence.
+     * that is not made of printable ASCII characters other than `:` is
+     * rejected. Reserved headers managed by the library (From, To, Subject, …)
+     * take precedence, whatever the case of the name.
      *
-     * @throws MailerException When the header name contains a CR, LF or NUL.
+     * @throws MailerException When the header name is not a valid field name.
      */
     public function setHeader(string $header, string $value): self
     {
-        if (EmailValidator::hasLineBreakOrNul($header)) {
-            throw new MailerException('A header name must not contain a line break or a NUL character.');
+        if (!HeaderRenderer::isValidName($header)) {
+            throw new MailerException(
+                'A header name must be made of printable ASCII characters other than ":" '
+                . '(no spaces, line breaks or NUL).',
+            );
         }
 
         $this->customHeaders[$header] = (string) preg_replace('/[\r\n\0]+/', '', $value);
@@ -237,7 +251,7 @@ class Mailer
 
         if ($returnPath !== null) {
             $returnPath = trim($returnPath, "<> \t\n\r\0\x0B");
-            $this->assertNoLineBreak($returnPath);
+            EmailValidator::assertSafeAddresses([$returnPath]);
             $this->assertValid($returnPath);
         }
 
@@ -361,7 +375,7 @@ class Mailer
 
     public function setAltMessage(string $str): self
     {
-        $this->altMessage = trim($str);
+        $this->altMessage = trim((string) preg_replace('/\r/', '', $str));
 
         return $this;
     }
@@ -436,11 +450,18 @@ class Mailer
 
     /**
      * Builds a unique Message-ID based on the sender domain.
+     *
+     * @throws InvalidAddressException When the configured sender address is unsafe.
      */
     public function getMessageID(): string
     {
-        $from = $this->returnPath ?? $this->from?->getEmail() ?? $this->config->fromEmail;
-        $domain = strstr($from, '@');
+        $from = $this->returnPath ?? $this->from?->getEmail();
+        if ($from === null && $this->config->fromEmail !== '') {
+            // Parsed (and so checked) like the sender that send() will use, not
+            // read raw from the configuration.
+            $from = Address::parse($this->config->fromEmail, $this->config->fromName)->getEmail();
+        }
+        $domain = $from === null ? false : strstr($from, '@');
 
         return '<' . uniqid('', true) . ($domain === false ? '@localhost' : $domain) . '>';
     }
@@ -649,7 +670,12 @@ class Mailer
      */
     private function buildGeneralHeaders(Address $from, Address $replyTo): array
     {
-        $headers = $this->customHeaders;
+        $headers = [];
+        foreach ($this->customHeaders as $name => $value) {
+            if (!\in_array(strtolower((string) $name), self::RESERVED_HEADERS, true)) {
+                $headers[(string) $name] = $value;
+            }
+        }
         $headers['Date'] = $this->date;
         $headers['From'] = $this->formatAddressHeader($from);
         $headers['Return-Path'] = '<' . ($this->returnPath ?? $from->getEmail()) . '>';
@@ -746,26 +772,12 @@ class Mailer
         foreach ($value as $item) {
             $item = trim((string) $item, "<> \t\r\n\0\x0B");
             if ($item !== '') {
-                $this->assertNoLineBreak($item);
+                EmailValidator::assertSafeAddresses([$item]);
                 $list[] = $item;
             }
         }
 
         return $list;
-    }
-
-    /**
-     * Rejects a CR, LF or NUL inside an address, whether or not address
-     * validation is enabled: the address is written into a header and into SMTP
-     * commands.
-     *
-     * @throws InvalidAddressException
-     */
-    private function assertNoLineBreak(string $email): void
-    {
-        if (EmailValidator::hasLineBreakOrNul($email)) {
-            throw new InvalidAddressException('An e-mail address must not contain a line break or a NUL character.');
-        }
     }
 
     /**

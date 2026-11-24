@@ -31,7 +31,10 @@ $mailer->setSubject('Café ☕');
 
 Encoding happens when the message is built, so you always pass plain strings.
 Line breaks and NUL are removed from a subject; a display name containing one is
-rejected with an `InvalidAddressException`.
+rejected with an `InvalidAddressException`. With a `UTF-8` charset, bytes that are
+not valid UTF-8 are replaced with `?` before encoding. With any other charset
+the bytes are encoded as they are and must already be in that charset (the
+mailer does not convert them).
 
 ## Body encoding
 
@@ -86,9 +89,10 @@ Out-of-range values fall back to 3.
 ## Custom headers
 
 Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
-prevent header injection, a header name containing one of them throws a
-`MailerException`, and the headers the library manages (From, To, Subject, Date,
-Message-ID, MIME-Version, X-*, …) always take precedence over custom ones.
+prevent header injection, a header name that is not printable ASCII without `:`
+or spaces throws a `MailerException`, and the headers the library manages (From, To, Subject, Date,
+Message-ID, MIME-Version, X-*, …) always take precedence over custom ones,
+whatever the case of the custom name.
 
 ```php
 $mailer->setHeader('List-Unsubscribe', '<https://example.com/unsubscribe>');

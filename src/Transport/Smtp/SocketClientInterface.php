@@ -47,7 +47,9 @@ interface SocketClientInterface
     public function readLine(int $length = 512): string|false;
 
     /**
-     * Enables TLS on the open connection.
+     * Enables TLS on the open connection. Returns false when the handshake
+     * fails, or when unread plain-text bytes are still buffered (see
+     * {@see StreamSocketClient::enableCrypto()}).
      */
     public function enableCrypto(int $cryptoMethod): bool;
 
