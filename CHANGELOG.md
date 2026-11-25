@@ -4,10 +4,13 @@ All notable changes to `initphp/mailer` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.1.0] - 2026-11-25
 
 ### Security
 
+- **Affected versions: 2.0.0 and 3.0.0.** The code these fixes change is the same in
+  both (3.0.0 only reformatted it). 1.0 and 1.1 are a different, single-file code
+  base and were not assessed.
 - A CR, LF or NUL in an address or return path is now rejected with an
   `InvalidAddressException` **whether or not** the `validate` option is on
   (`Address`, `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`). A
@@ -89,6 +92,24 @@ Behaviours that differ from 3.0.0 and are not security fixes in themselves:
   recipients with a line break or angle bracket, so a `PreparedEmail` built by
   hand cannot inject headers. A MIME boundary from `setBoundaryFactory()` that is
   empty or contains a quote, CR, LF or NUL throws a `MailerException`.
+
+### Documentation
+
+- Sending Mail, Configuration, Error Handling and the FAQ state that `validate =>
+  false` switches off the format check only (a CR, LF, NUL, `<` or `>` in an
+  address is rejected either way), and that a request-supplied *string* can still
+  name several recipients: pass a single untrusted address as an array item and
+  keep `validate` on.
+- Encoding and Headers, Sending Mail and Transports describe the custom-header
+  rules: the accepted header names, that headers the library writes win over a
+  custom one of the same name, that `To` is not special-cased, that a `Bcc` header
+  added by hand with `setHeader()` is visible to the recipients (the recipients set
+  with `setBCC()` never are), and how a subject or display name with a line break
+  or NUL is made safe.
+- SMTP Transport documents that a failed send closes the connection and forgets
+  the "authenticated" state, the xtext-encoded `ORCPT` address, the `220`
+  greeting check and the new error cases. Attachments and the API reference list
+  the CR, LF and NUL checks and the `Content-ID` and quoted-name rules.
 
 ## [3.0.0] - 2026-11-22
 
@@ -172,5 +193,6 @@ breaking changes and how to migrate.
   case-insensitive.
 - The archive returned after a send no longer contains SMTP credentials.
 
+[3.1.0]: https://github.com/InitPHP/Mailer/compare/3.0.0...3.1.0
 [3.0.0]: https://github.com/InitPHP/Mailer/compare/2.0.0...3.0.0
 [2.0.0]: https://github.com/InitPHP/Mailer/compare/1.1...2.0.0

@@ -8,7 +8,7 @@
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com>
  * @copyright  Copyright © 2022 InitPHP
  * @license    https://github.com/InitPHP/Mailer/blob/main/LICENSE  MIT
- * @version    2.0
+ * @version    3.1.0
  * @link       https://muhammetsafak.com
  */
 
