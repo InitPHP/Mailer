@@ -42,7 +42,7 @@ final class QEncoder
 
     public function encode(string $str): string
     {
-        $str = str_replace(["\r", "\n", "\0"], '', $str);
+        $str = str_replace(["\r", "\n"], '', $str);
         $chars = null;
 
         if ($this->charset === 'UTF-8') {

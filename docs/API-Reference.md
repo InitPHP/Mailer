@@ -50,7 +50,7 @@ with that batch size. **Throws** `InvalidAddressException` (same line-break rule
 
 ### `setSubject(string $subject): self`
 Sets the subject. Encoded (RFC 2047 Q) automatically when it contains non-ASCII.
-CR, LF and NUL are removed when the message is built.
+CR and LF are removed when the message is built; a NUL is Q-encoded (`=00`).
 
 ### `setMessage(string $body): self`
 Sets the body (plain text or HTML depending on the mail type). Carriage returns

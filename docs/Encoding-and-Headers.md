@@ -30,8 +30,10 @@ $mailer->setSubject('Café ☕');
 ```
 
 Encoding happens when the message is built, so you always pass plain strings.
-Line breaks and NUL are removed from a subject; a display name containing one is
-rejected with an `InvalidAddressException`. With a `UTF-8` charset, bytes that are
+Line breaks are removed from a subject (a NUL is Q-encoded as `=00`). A display
+name with a line break or NUL is made safe the same way it always was: an ASCII
+name is quoted with the control characters backslash-escaped, a non-ASCII name is
+Q-encoded with the line breaks removed; it is not rejected. With a `UTF-8` charset, bytes that are
 not valid UTF-8 are replaced with `?` before encoding. With any other charset
 the bytes are encoded as they are and must already be in that charset (the
 mailer does not convert them).

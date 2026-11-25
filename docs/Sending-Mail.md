@@ -72,9 +72,10 @@ try {
 
 Disable validation with `'validate' => false` only if you need to accept
 addresses the PHP filter rejects, and only for addresses you control. A CR, LF,
-NUL, `<` or `>` inside an address, or a CR, LF or NUL in a display name, is
-rejected with an `InvalidAddressException` even then, so a request-supplied
-address cannot start another header or add parameters to an SMTP command — see
+NUL, `<` or `>` inside an address is rejected with an `InvalidAddressException`
+even then, so a request-supplied address cannot start another header or add
+parameters to an SMTP command (a display name is not rejected; a line break or
+NUL in it is escaped or Q-encoded when the header is written) — see
 [Error Handling](Error-Handling.md#fail-fast-on-bad-input).
 
 That check does **not** stop a request-supplied *string* from naming several

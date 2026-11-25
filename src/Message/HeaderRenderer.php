@@ -105,9 +105,11 @@ final class HeaderRenderer
 
     /**
      * Whether `$name` is usable as a header field name: printable ASCII other
-     * than `:`, optionally with spaces around it (`To ` was accepted before, and
-     * RFC 5322 allows whitespace before the colon). A line break, a NUL, a tab,
-     * a colon or an inner space is not.
+     * than `:`, optionally with spaces around it, as 3.0.0 accepted. RFC 5322
+     * allows whitespace before the colon; a space before the name makes the line
+     * a continuation of the previous header, which is what 3.0.0 wrote too. A
+     * line break, a NUL, a tab or other whitespace, a colon or an inner space is
+     * not valid.
      *
      * @internal
      */
