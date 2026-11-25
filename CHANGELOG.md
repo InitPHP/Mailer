@@ -103,8 +103,9 @@ Behaviours that differ from 3.0.0 and are not security fixes in themselves:
 - Encoding and Headers, Sending Mail and Transports describe the custom-header
   rules: the accepted header names, that headers the library writes win over a
   custom one of the same name, that `To` is not special-cased, that a `Bcc` header
-  added by hand with `setHeader()` is visible to the recipients (the recipients set
-  with `setBCC()` never are), and how a subject or display name with a line break
+  added by hand with `setHeader()` is visible to the recipients on SMTP (on
+  sendmail it is removed from the delivered copy, and the recipients set with
+  `setBCC()` never appear in the headers), and how a subject or display name with a line break
   or NUL is made safe.
 - SMTP Transport documents that a failed send closes the connection and forgets
   the "authenticated" state, the xtext-encoded `ORCPT` address, the `220`
