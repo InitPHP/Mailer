@@ -92,6 +92,12 @@ each transport does the right thing:
   never appear in the headers** (a `Bcc` header you add by hand with
   `setHeader()` does; see [Sending Mail](Sending-Mail.md#custom-headers)).
 
+A `To`, `Cc` or `Bcc` header you add by hand with `setHeader()` is not a recipient
+on `smtp`, but `mail()` and `sendmail` read recipients from the headers, so there
+it can be one. A custom `To` is never replaced case-insensitively: it behaves as it
+always did on every transport. See
+[Custom headers](Sending-Mail.md#custom-headers) before passing untrusted input.
+
 ## Supplying your own transport
 
 Any object implementing `TransportInterface` can be injected with

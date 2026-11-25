@@ -63,12 +63,21 @@ final class QEncoderTest extends TestCase
         }
     }
 
-    public function testStripsLineBreaksAndNul(): void
+    public function testStripsLineBreaks(): void
     {
-        $encoded = $this->utf8()->encode("Hello\r\nBcc: x@example.test\0");
+        $encoded = $this->utf8()->encode("Hello\r\nBcc: x@example.test");
 
         $this->assertSame('HelloBcc: x@example.test', iconv_mime_decode($encoded, 0, 'UTF-8'));
-        $this->assertStringNotContainsString("\0", $encoded);
+    }
+
+    public function testANulIsEncodedNeverWrittenRaw(): void
+    {
+        foreach (["Hello\0X", "Hell\u{F6}\0X"] as $subject) {
+            $encoded = $this->utf8()->encode($subject);
+
+            $this->assertStringNotContainsString("\0", $encoded);
+            $this->assertStringContainsString('=00', $encoded);
+        }
     }
 
     public function testInvalidUtf8IsReplacedWithoutNotices(): void

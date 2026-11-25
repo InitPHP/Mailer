@@ -54,7 +54,7 @@ final class AddressTest extends TestCase
     /**
      * @dataProvider unsafeParts
      */
-    public function testRejectsALineBreakOrNulInTheAddressOrName(string $email, string $name): void
+    public function testRejectsALineBreakOrNulInTheAddress(string $email, string $name): void
     {
         $this->expectException(InvalidAddressException::class);
 
@@ -71,12 +71,10 @@ final class AddressTest extends TestCase
             'LF in the address'   => ["a@example.com\nBcc: x@example.test", ''],
             'CR in the address'   => ["a@example.com\rBcc: x@example.test", ''],
             'NUL in the address'  => ["a@example.com\0", ''],
-            'CRLF in the name'    => ['a@example.com', "Name\r\nBcc: x@example.test"],
-            'NUL in the name'     => ['a@example.com', "Na\0me"],
         ];
     }
 
-    public function testParseRejectsALineBreakInsideAnEmbeddedNameOrAddress(): void
+    public function testParseRejectsALineBreakInsideTheAddressPart(): void
     {
         $this->expectException(InvalidAddressException::class);
 
@@ -90,13 +88,21 @@ final class AddressTest extends TestCase
         $this->assertSame('a@example.com', $address->getEmail());
     }
 
-    public function testParseRejectsALineBreakHiddenInTheNameThatWouldBeDiscarded(): void
+    public function testAnAddressIsNotRejectedForALineBreakInTheNameItCarries(): void
     {
-        $this->expectException(InvalidAddressException::class);
+        // The regex lets `.` match a CR, so the "name" part of this raw value
+        // holds the line break; the address is the clean part inside <...>.
+        $address = Address::parse("Evil\rBcc: x@example.test <a@example.com>");
 
-        // The explicit name wins, so the embedded "name" is thrown away; the
-        // line break must be caught before that.
-        Address::parse("Evil\rBcc: x@example.test <a@example.com>", 'Explicit');
+        $this->assertSame('a@example.com', $address->getEmail());
+        $this->assertSame("Evil\rBcc: x@example.test", $address->getName());
+    }
+
+    public function testADisplayNameWithALineBreakOrNulIsKeptNotRejected(): void
+    {
+        $address = new Address('a@example.com', "Na\r\nme\0");
+
+        $this->assertSame("Na\r\nme\0", $address->getName());
     }
 
     /**

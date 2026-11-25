@@ -77,6 +77,8 @@ final class HeaderRendererTest extends TestCase
     {
         return [
             'CRLF'  => ["X\r\nBcc"],
+            'trailing LF' => ["X-A\n"],
+            'tab'   => ["X-A\t"],
             'space' => ['X A'],
             'colon' => ['X:A'],
         ];

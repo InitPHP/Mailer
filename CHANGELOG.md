@@ -8,22 +8,47 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
-- A CR, LF or NUL in an address, display name or return path is now rejected
-  with an `InvalidAddressException` **whether or not** the `validate` option is
-  on (`Address`, `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`).
+- A CR, LF or NUL in an address or return path is now rejected with an
+  `InvalidAddressException` **whether or not** the `validate` option is on
+  (`Address`, `setFrom()`, `setReplyTo()`, `setTo()`, `setCC()`, `setBCC()`). A
+  display name is not rejected: as in 3.0.0, an ASCII name is quoted with its
+  control characters backslash-escaped and a non-ASCII name is Q-encoded with the
+  line breaks removed, so it cannot start another header.
   Before, `validate => false` also switched off the only line-break check, so a
   request-supplied address could add headers or SMTP commands. Leading and
   trailing line breaks are still trimmed, and a recipient string is still split
   on whitespace.
 - `setHeader()` throws a `MailerException` for a header name containing a CR, LF
   or NUL. A header value keeps its documented behaviour: CR and LF are stripped,
-  and NUL is now stripped too. The subject is stripped of NUL as well.
+  and NUL is now stripped too. The subject keeps its behaviour too: CR and LF are
+  removed and a NUL is Q-encoded (`=00`), never written raw.
 - Attachment names, dispositions and MIME types containing a CR, LF or NUL throw
   an `AttachmentException`; the `userAgent` and `charset` options containing one
   throw a `ConfigurationException`.
 - `SmtpTransport` refuses a recipient containing a CR, LF, NUL, `<` or `>`
   (`InvalidAddressException`) or a client hostname containing a CR, LF or NUL
   (`TransportException`) before it connects, instead of writing it to the socket.
+
+### Changed
+
+Behaviours that differ from 3.0.0 and are not security fixes in themselves:
+
+- `setHeader()` throws a `MailerException` for a header name that is empty, has a
+  tab or other whitespace, an inner space, a colon, or a non-ASCII or control
+  character. 3.0.0 wrote `X: y: value` or a name with a tab as given; a colon or
+  empty name produced a broken header. Spaces around a name are still accepted.
+- A custom header with the same name as one the library writes is no longer
+  written as a second line: `from`, `date`, `message-id`, `user-agent`, `x-mailer`,
+  `x-sender`, `x-priority`, `mime-version`, `reply-to`, `return-path`,
+  `content-type`, `content-transfer-encoding` (any case), `cc` next to
+  `setCC()`, `bcc` next to `setBCC()` on sendmail and `mail()`, and `subject` (any case,
+  and also the exact `Subject` on `mail()`). Before, 3.0.0 wrote both. A custom `cc`/`bcc` that followed a real CC
+  or BCC list used to add that address as a recipient on sendmail and `mail()`;
+  it no longer does. `To` is not affected.
+- A header the library overrides keeps the position it has in the library's own
+  list instead of the custom header's position.
+- `"a>b"@example.com`-style addresses (a `<` or `>` inside the address) are
+  rejected; the SMTP server greeting must be `220`.
 
 ### Fixed
 
@@ -37,20 +62,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `StreamSocketClient::enableCrypto()` refuses to start TLS while clear-text
   bytes are still in the read buffer (STARTTLS response injection).
 - The `Message-ID` domain is taken from the parsed sender, not from the raw
-  `fromEmail` option, and `Address::parse()` checks the whole input before the
-  display name is split off, so a CR, LF or NUL cannot hide in the part that is
-  discarded.
+  `fromEmail` option, so a CR, LF or NUL in that option cannot reach the header.
 - A `<` or `>` inside an address is rejected (even with `validate` off): it could
   close the SMTP path and add parameters (`RCPT TO:<a@x.com> NOTIFY=NEVER>`).
-- `setHeader()`: a header the library writes itself for the message wins over a
-  custom one of the same name whatever the case (a custom `from`, or `bcc` next
-  to a real BCC list, is dropped instead of added as a second header). A header
-  the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
-  without `setCC()`/`setBCC()`/`setTo()` still adds that header. (3.0.0 lost a
-  custom `To` on sendmail and SMTP when the message had no To recipient; it is now
-  kept there too. `sendmail -t` reads recipients from the headers, so such a
-  hand-set `To` is now also a recipient on sendmail.) A name with a space, a
-  colon or any non-printable or non-ASCII character throws a `MailerException`.
+- `setHeader()`: a header the library writes itself for the message (`Cc` with CC
+  recipients, `Bcc` with BCC recipients, `Subject`, `From`, …) wins over a custom
+  one of the same name whatever the case or the spacing (a custom `from`, or `bcc`
+  next to a real BCC list, is dropped instead of added as a second header). A
+  header the library does not write is kept as before. `To` is not special-cased:
+  a custom `To` behaves exactly as in 3.0.0 on `mail()`, sendmail and SMTP,
+  including in BCC batches, so it adds no recipient that 3.0.0 did not, for every
+  spelling of the name that is still accepted (letter case, and spaces around
+  it). A name with a tab or other whitespace, an inner space, a colon, or any
+  non-printable or non-ASCII character throws a `MailerException` (see Changed).
 - `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
   dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.
 - A `"` or `\` in an attachment name is escaped inside the quoted `name`

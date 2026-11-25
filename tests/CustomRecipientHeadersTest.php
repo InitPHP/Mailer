@@ -18,9 +18,10 @@ use function explode;
 use function preg_match;
 
 /**
- * `setHeader('Cc'|'Bcc'|'To'|'Subject')` keeps working when the library does
- * not write that header itself, and loses to the library's own header when it
- * does, whatever the case of the name. The "kept" cases below produce the same
+ * `setHeader('Cc'|'Bcc')` keeps working when the library does not write that
+ * header itself, and loses to the library's own header (and `Subject` always
+ * does) whatever the case of the name. `To` is covered by
+ * {@see RecipientHeaderMatrixTest}. The "kept" cases below produce the same
  * lines as 3.0.0; the "wins" cases are the intended difference (one header, not
  * two).
  */
@@ -147,17 +148,15 @@ final class CustomRecipientHeadersTest extends TestCase
         self::assertSame(['Bcc: real@example.com'], $this->lines($message, 'Bcc'));
     }
 
-    public function testSendmailRealCcToAndSubjectWinWhateverTheCase(): void
+    public function testSendmailRealCcAndSubjectWinWhateverTheCase(): void
     {
         $message = $this->viaSendmail(
             static fn(Mailer $m) => $m->setTo('t@example.com')->setCC('real@example.com')
                 ->setHeader('CC', 'archive@co.example')
-                ->setHeader('to', 'other@co.example')
                 ->setHeader('SUBJECT', 'evil'),
         );
 
         self::assertSame(['Cc: real@example.com'], $this->lines($message, 'Cc'));
-        self::assertSame(['To: t@example.com'], $this->lines($message, 'To'));
         self::assertCount(1, $this->lines($message, 'Subject'));
         self::assertStringNotContainsString('evil', $message);
     }
@@ -174,18 +173,16 @@ final class CustomRecipientHeadersTest extends TestCase
         self::assertSame(['Cc: c@co.example'], $this->lines($data, 'Cc'));
     }
 
-    public function testSmtpRealCcToAndSubjectWinWhateverTheCase(): void
+    public function testSmtpRealCcAndSubjectWinWhateverTheCase(): void
     {
         $data = $this->viaSmtp(
             static fn(Mailer $m) => $m->setTo('t@example.com')->setCC('real@example.com')
                 ->setHeader('cC', 'archive@co.example')
-                ->setHeader('tO', 'other@co.example')
                 ->setHeader('subject', 'evil'),
             2,
         );
 
         self::assertSame(['Cc: real@example.com'], $this->lines($data, 'Cc'));
-        self::assertSame(['To: t@example.com'], $this->lines($data, 'To'));
         self::assertCount(1, $this->lines($data, 'Subject'));
         self::assertStringNotContainsString('evil', $data);
     }
@@ -200,51 +197,5 @@ final class CustomRecipientHeadersTest extends TestCase
 
         self::assertSame(['Bcc: real@example.com'], $this->lines($headers, 'Bcc'));
         self::assertSame(['Cc: c@co.example'], $this->lines($headers, 'Cc'));
-    }
-
-    public function testBccBatchesAfterTheFirstDoNotCarryACustomToWhenTheMessageHasATo(): void
-    {
-        $messages = [];
-        $mailer = Mailer::newInstance(['newline' => "\n"])->setTransport(new SendmailTransport(
-            '/usr/sbin/sendmail',
-            new EmailValidator(),
-            static function (string $command, string $raw) use (&$messages): int {
-                $messages[] = $raw;
-
-                return 0;
-            },
-        ));
-        $mailer->setFrom('s@example.com')->setSubject('Subject')->setMessage('Body')
-            ->setTo('t@example.com')
-            ->setBCC(['b1@example.com', 'b2@example.com', 'b3@example.com'], 2)
-            ->setHeader('To', 'other@co.example')
-            ->send();
-
-        self::assertCount(2, $messages);
-        self::assertSame(['To: t@example.com'], $this->lines($messages[0], 'To'));
-        self::assertSame([], $this->lines($messages[1], 'To'));
-    }
-
-    public function testBccOnlyBatchesKeepACustomTo(): void
-    {
-        $messages = [];
-        $mailer = Mailer::newInstance(['newline' => "\n"])->setTransport(new SendmailTransport(
-            '/usr/sbin/sendmail',
-            new EmailValidator(),
-            static function (string $command, string $raw) use (&$messages): int {
-                $messages[] = $raw;
-
-                return 0;
-            },
-        ));
-        $mailer->setFrom('s@example.com')->setSubject('Subject')->setMessage('Body')
-            ->setBCC(['b1@example.com', 'b2@example.com', 'b3@example.com'], 2)
-            ->setHeader('To', 'undisclosed-recipients:;')
-            ->send();
-
-        self::assertCount(2, $messages);
-        foreach ($messages as $message) {
-            self::assertSame(['To: undisclosed-recipients:;'], $this->lines($message, 'To'));
-        }
     }
 }

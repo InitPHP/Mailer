@@ -50,7 +50,7 @@ with that batch size. **Throws** `InvalidAddressException` (same line-break rule
 
 ### `setSubject(string $subject): self`
 Sets the subject. Encoded (RFC 2047 Q) automatically when it contains non-ASCII.
-CR, LF and NUL are removed when the message is built.
+CR and LF are removed when the message is built; a NUL is Q-encoded (`=00`).
 
 ### `setMessage(string $body): self`
 Sets the body (plain text or HTML depending on the mail type). Carriage returns
@@ -85,13 +85,14 @@ Promotes a previously added attachment (matched by its path/name) to an inline
 
 ### `setHeader(string $header, string $value): self`
 Adds a custom header. CR, LF and NUL are stripped from the value. A header the
-library writes for the message itself (From, Subject, To with To recipients,
-Cc with CC recipients,
-Bcc with BCC recipients on sendmail and `mail()`, Date, Message-ID, …) wins over
-a custom one of the same name, whatever the case; one it does not write is kept
-as you set it. Use `setCC()`/`setBCC()` for recipients, not headers.
+library writes for the message itself (From, Subject, Cc with CC recipients, Bcc
+with BCC recipients on sendmail and `mail()`, Date, Message-ID, …) wins over a
+custom one of the same name, whatever the case or spacing; one it does not write
+is kept as you set it. `To` is not special-cased and behaves as it always did
+(see [Custom headers](Sending-Mail.md#custom-headers)). Use
+`setTo()`/`setCC()`/`setBCC()` for recipients, not headers.
 **Throws** `MailerException` when the header name is not printable ASCII
-without `:` or spaces.
+without `:`, a tab or an inner space.
 
 ### `setPriority(int $n = 3): self`
 `X-Priority`, 1 (highest)–5 (lowest); out-of-range → 3.

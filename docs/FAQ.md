@@ -59,12 +59,14 @@ $mailer = Mailer::newInstance(['validate' => false]);
 ```
 
 > **Security:** `validate => false` removes the format check on addresses, but
-> not the character check. A CR, LF or NUL inside an address or a display name
+> not the character check. A CR, LF or NUL inside an address
 > (`user@example.com\r\nBcc: attacker@example.test`), or a `<` or `>` inside an
 > address (`user@example.com> NOTIFY=NEVER`), is rejected with an
 > `InvalidAddressException` whether validation is on or off, so a request-supplied
 > address cannot start another header or add parameters to an SMTP command. Only
-> a leading or trailing line break is trimmed. The check does not limit how many
+> a leading or trailing line break is trimmed. A display name is never rejected:
+> a line break or NUL in it is escaped or Q-encoded when the header is written,
+> so it cannot start another header either. The check does not limit how many
 > recipients a string names: `"a@x.com,b@x.com"` is two. Avoid turning validation
 > off for addresses that come from user input, and pass a single untrusted
 > address as `setTo([$address])`.

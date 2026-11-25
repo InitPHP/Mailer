@@ -31,35 +31,30 @@ final class Address
 {
     /**
      * @throws InvalidAddressException When the address contains a CR, LF, NUL,
-     *                                 `<` or `>`, or the name a CR, LF or NUL.
-     *                                 This is checked even when address
-     *                                 validation is off.
+     *                                 `<` or `>`. This is checked even when
+     *                                 address validation is off.
      */
     public function __construct(
         private readonly string $email,
         private readonly string $name = '',
     ) {
+        // Only the address is refused. A display name with a line break or NUL
+        // is not rejected: it is made safe when it is written (an ASCII name is
+        // escaped, a non-ASCII name is Q-encoded with the line breaks removed),
+        // as it always was.
         EmailValidator::assertSafeAddresses([$email]);
-        if (EmailValidator::hasLineBreakOrNul($name)) {
-            throw new InvalidAddressException('A display name must not contain a line break or a NUL character.');
-        }
     }
 
     /**
      * Parses `"Name" <email>`, `<email>` or `email` into an Address. A display
      * name passed explicitly takes precedence over one embedded in `$raw`.
      *
-     * @throws InvalidAddressException When the address contains a CR, LF, NUL,
-     *                                 `<` or `>`, or the name a CR, LF or NUL.
+     * @throws InvalidAddressException When the address part contains a CR, LF,
+     *                                 NUL, `<` or `>`.
      */
     public static function parse(string $raw, string $name = ''): self
     {
         $raw = trim($raw);
-        // Checked before the display name is split off, so a line break cannot
-        // hide in the part that is discarded when an explicit name wins.
-        if (EmailValidator::hasLineBreakOrNul($raw)) {
-            throw new InvalidAddressException('An e-mail address must not contain a line break or a NUL character.');
-        }
         if (preg_match('/^(.*)<(.+)>$/', $raw, $matches) === 1) {
             if ($name === '') {
                 $name = trim($matches[1], " \t\"");

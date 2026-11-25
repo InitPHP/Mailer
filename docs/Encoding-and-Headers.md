@@ -30,8 +30,10 @@ $mailer->setSubject('Café ☕');
 ```
 
 Encoding happens when the message is built, so you always pass plain strings.
-Line breaks and NUL are removed from a subject; a display name containing one is
-rejected with an `InvalidAddressException`. With a `UTF-8` charset, bytes that are
+Line breaks are removed from a subject (a NUL is Q-encoded as `=00`). A display
+name with a line break or NUL is made safe the same way it always was: an ASCII
+name is quoted with the control characters backslash-escaped, a non-ASCII name is
+Q-encoded with the line breaks removed; it is not rejected. With a `UTF-8` charset, bytes that are
 not valid UTF-8 are replaced with `?` before encoding. With any other charset
 the bytes are encoded as they are and must already be in that charset (the
 mailer does not convert them).
@@ -89,11 +91,12 @@ Out-of-range values fall back to 3.
 ## Custom headers
 
 Add any header with `setHeader()`. CR, LF and NUL are stripped from the value to
-prevent header injection, a header name that is not printable ASCII without `:`
-or spaces throws a `MailerException`. The headers the library writes itself
-(From, To, Subject, Date, Message-ID, MIME-Version, X-Mailer, …, and Cc/Bcc when
-there are such recipients) win over a custom header of the same name, whatever
-the case; a header the library does not write is kept. See
+prevent header injection, and a header name that is not printable ASCII without
+`:`, a tab or an inner space throws a `MailerException`. The headers the library
+writes itself (From, Subject, Date, Message-ID, MIME-Version, X-Mailer, …, and
+Cc/Bcc when there are such recipients) win over a custom header of the same name,
+whatever the case or spacing; a header the library does not write is kept. `To`
+is not special-cased and behaves as it always did. See
 [Sending Mail](Sending-Mail.md#custom-headers).
 
 ```php
