@@ -346,7 +346,7 @@ final class HeaderInjectionTest extends TestCase
     public static function invalidHeaderNames(): array
     {
         return [
-            'trailing space' => ['From '],
+            'only spaces'    => ['   '],
             'inner space'    => ['X Y'],
             'colon'          => ['X: y'],
             'trailing colon' => ['X-A:'],

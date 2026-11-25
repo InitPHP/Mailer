@@ -87,7 +87,7 @@ class Mailer
      * builder; a custom header with one of these names is always dropped. The
      * other headers the library writes are known only while the message is built
      * (see {@see buildGeneralHeaders()}): `Cc` is written only when there are CC
-     * recipients, and `To`, `Subject` and `Bcc` are left to the transport.
+     * recipients, and `Subject` and `Bcc` are left to the transport.
      */
     private const CONTENT_HEADERS = ['content-type', 'content-transfer-encoding'];
 
@@ -217,13 +217,14 @@ class Mailer
     /**
      * Adds an arbitrary header (for example `List-Unsubscribe`). CR, LF and NUL
      * are stripped from the value to prevent header injection; a header name
-     * that is not made of printable ASCII characters other than `:` is
-     * rejected. A header the library writes itself for the message (From,
-     * Reply-To, Date, Message-ID, Cc when there are CC recipients, To, Subject,
-     * Bcc when there are BCC recipients, …) takes precedence over a custom header
-     * of the same name, whatever the case; use setCC() and setBCC() for
-     * recipients. A custom `Cc`, `Bcc` or `To` the library does not write (no CC,
-     * BCC or To recipients) is passed through unchanged.
+     * that is not made of printable ASCII characters other than `:` (spaces
+     * around it are allowed) is rejected. A header the library writes itself for
+     * the message (From, Reply-To, Date, Message-ID, Subject, Cc when there are
+     * CC recipients, Bcc when there are BCC recipients, …) takes precedence over
+     * a custom header of the same name, whatever the case or the spacing; use
+     * setCC() and setBCC() for recipients. A custom `Cc` or `Bcc` the library
+     * does not write (no CC or BCC recipients) is passed through unchanged. `To`
+     * is not special-cased: a custom `To` behaves as it did in 3.0.0.
      *
      * @throws MailerException When the header name is not a valid field name.
      */
@@ -232,7 +233,7 @@ class Mailer
         if (!HeaderRenderer::isValidName($header)) {
             throw new MailerException(
                 'A header name must be made of printable ASCII characters other than ":" '
-                . '(no spaces, line breaks or NUL).',
+                . '(spaces are allowed only around it; no line breaks or NUL).',
             );
         }
 
@@ -691,10 +692,6 @@ class Mailer
         // A custom header the library also writes loses, whatever the case of
         // its name. One the library does not write for this message is kept.
         $managed = HeaderRenderer::names($headers);
-        if ($this->to !== []) {
-            // The transport writes To (or passes it to mail()) for the whole message.
-            $managed['to'] = true;
-        }
         $custom = [];
         foreach ($this->customHeaders as $name => $value) {
             $key = strtolower(trim((string) $name));

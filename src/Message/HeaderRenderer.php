@@ -58,6 +58,8 @@ final class HeaderRenderer
      * The set of header names in `$headers`, lower-cased and trimmed, as the keys
      * of an array (`['from' => true, …]`).
      *
+     * @internal
+     *
      * @param array<string, string> $headers
      *
      * @return array<string, true>
@@ -76,6 +78,8 @@ final class HeaderRenderer
      * `$headers` without the headers named in `$names`, compared without regard
      * to case or surrounding whitespace. Transports use it to drop a custom
      * header they are about to write themselves.
+     *
+     * @internal
      *
      * @param array<string, string> $headers
      * @param list<string>          $names
@@ -101,14 +105,20 @@ final class HeaderRenderer
 
     /**
      * Whether `$name` is usable as a header field name: printable ASCII other
-     * than `:`, so no space, line break, NUL or colon.
+     * than `:`, optionally with spaces around it (`To ` was accepted before, and
+     * RFC 5322 allows whitespace before the colon). A line break, a NUL, a tab,
+     * a colon or an inner space is not.
+     *
+     * @internal
      */
     public static function isValidName(string $name): bool
     {
-        return preg_match('/\A[\x21-\x39\x3B-\x7E]+\z/', $name) === 1;
+        return preg_match('/\A {0,}[\x21-\x39\x3B-\x7E]+ {0,}\z/', $name) === 1;
     }
 
     /**
+     * @internal
+     *
      * @throws MailerException
      */
     public static function assertSafe(string $name, string $value): void

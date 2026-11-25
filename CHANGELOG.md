@@ -42,15 +42,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   discarded.
 - A `<` or `>` inside an address is rejected (even with `validate` off): it could
   close the SMTP path and add parameters (`RCPT TO:<a@x.com> NOTIFY=NEVER>`).
-- `setHeader()`: a header the library writes itself for the message wins over a
-  custom one of the same name whatever the case (a custom `from`, or `bcc` next
-  to a real BCC list, is dropped instead of added as a second header). A header
-  the library does not write is kept as before: `setHeader('Cc'|'Bcc'|'To', …)`
-  without `setCC()`/`setBCC()`/`setTo()` still adds that header. (3.0.0 lost a
-  custom `To` on sendmail and SMTP when the message had no To recipient; it is now
-  kept there too. `sendmail -t` reads recipients from the headers, so such a
-  hand-set `To` is now also a recipient on sendmail.) A name with a space, a
-  colon or any non-printable or non-ASCII character throws a `MailerException`.
+- `setHeader()`: a header the library writes itself for the message (`Cc` with CC
+  recipients, `Bcc` with BCC recipients, `Subject`, `From`, …) wins over a custom
+  one of the same name whatever the case or the spacing (a custom `from`, or `bcc`
+  next to a real BCC list, is dropped instead of added as a second header). A
+  header the library does not write is kept as before. `To` is not special-cased:
+  a custom `To` behaves exactly as in 3.0.0 on `mail()`, sendmail and SMTP,
+  including in BCC batches, so it adds no recipient that 3.0.0 did not. A name
+  with a tab, an inner space, a colon, or any non-printable or non-ASCII
+  character throws a `MailerException`; spaces around a name are still accepted.
 - `setAltMessage()` strips carriage returns like `setMessage()`. The SMTP
   dot-stuffing now also handles a bare `"\r"` or `"\n\r"` newline.
 - A `"` or `\` in an attachment name is escaped inside the quoted `name`

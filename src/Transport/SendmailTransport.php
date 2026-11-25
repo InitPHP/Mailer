@@ -55,18 +55,15 @@ final class SendmailTransport implements TransportInterface
         $from = $email->from->getEmail();
         $fromArg = $this->validator->isShellSafe($from) ? '-f ' . $from : '';
 
-        // A custom To or Bcc only gives way when the library writes one.
+        // A custom Subject, and a custom Bcc when there are BCC recipients, give
+        // way to the real header. To is written as it always was: it replaces a
+        // custom header named exactly "To" and sits beside any other spelling.
         $drop = ['Subject'];
-        if ($email->to !== []) {
-            $drop[] = 'To';
-        }
         if ($email->bcc !== []) {
             $drop[] = 'Bcc';
         }
         $headers = HeaderRenderer::without($email->headers, $drop);
-        if ($email->to !== []) {
-            $headers['To'] = implode(', ', $email->to);
-        }
+        $headers['To'] = implode(', ', $email->to);
         $headers['Subject'] = $email->subject;
         if ($email->bcc !== []) {
             $headers['Bcc'] = implode(', ', $email->bcc);

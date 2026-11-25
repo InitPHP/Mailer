@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace InitPHP\Mailer\Tests;
 
 use InitPHP\Mailer\Mailer;
-use InitPHP\Mailer\Tests\Support\FakeSocketClient;
+use InitPHP\Mailer\Tests\Support\RespondingSocketClient;
 use InitPHP\Mailer\Transport\MailTransport;
 use InitPHP\Mailer\Transport\SendmailTransport;
 use InitPHP\Mailer\Transport\SmtpTransport;
@@ -16,91 +16,256 @@ use function array_diff;
 use function array_filter;
 use function array_map;
 use function array_values;
+use function count;
 use function explode;
 use function preg_match;
 use function sort;
 
 /**
  * A custom To, Cc or Bcc header set with setHeader(), across the three
- * transports: the header the library writes itself wins whatever the case of the
- * custom name, and one it does not write is passed through.
+ * transports, with and without BCC batching, and for six spellings of the name
+ * (exact, lower, upper, mixed case, and a space before or after it).
  *
- * Each row holds the To/Cc/Bcc header lines of the message as they are now and as
- * 3.0.0 produced them for the same calls (recorded by running that release's
- * source). Where the two differ the difference is intended: a custom header the
- * library also writes is no longer emitted as a second line, and a custom To is
- * kept when the message has no To recipient (3.0.0 lost it on sendmail and SMTP).
+ * Each row holds the To/Cc/Bcc header lines of every message as they are now and
+ * as 3.0.0 produced them for the same calls; the 3.0.0 column was recorded by
+ * running the 3.0.0 tag's source. `To` is not special-cased: its output equals
+ * 3.0.0's in every row. The only difference is on `Cc` and `Bcc`: when the
+ * library writes that header itself, a custom one of the same name (any case or
+ * spacing) is no longer emitted as a second line.
  */
 final class RecipientHeaderMatrixTest extends TestCase
 {
     /**
-     * @return array<string, array{string, string, bool, string, list<string>, list<string>}>
+     * @return array<string, array{string, string, bool, bool, string, list<list<string>>, list<list<string>>}>
      */
     public static function matrix(): array
     {
         return [
-            'mail, custom To, library writes it' => ['mail', 'To', true, 'To', [], ['To: custom@co.example']],
-            'mail, custom to, library writes it' => ['mail', 'To', true, 'to', [], ['to: custom@co.example']],
-            'mail, custom To, library does not' => ['mail', 'To', false, 'To', ['Bcc: b@x.com', 'To: custom@co.example'], ['Bcc: b@x.com', 'To: custom@co.example']],
-            'mail, custom to, library does not' => ['mail', 'To', false, 'to', ['Bcc: b@x.com', 'to: custom@co.example'], ['Bcc: b@x.com', 'to: custom@co.example']],
-            'mail, custom Cc, library writes it' => ['mail', 'Cc', true, 'Cc', ['Cc: c@x.com'], ['Cc: c@x.com']],
-            'mail, custom cc, library writes it' => ['mail', 'Cc', true, 'cc', ['Cc: c@x.com'], ['Cc: c@x.com', 'cc: custom@co.example']],
-            'mail, custom Cc, library does not' => ['mail', 'Cc', false, 'Cc', ['Cc: custom@co.example'], ['Cc: custom@co.example']],
-            'mail, custom cc, library does not' => ['mail', 'Cc', false, 'cc', ['cc: custom@co.example'], ['cc: custom@co.example']],
-            'mail, custom Bcc, library writes it' => ['mail', 'Bcc', true, 'Bcc', ['Bcc: b@x.com'], ['Bcc: b@x.com']],
-            'mail, custom bcc, library writes it' => ['mail', 'Bcc', true, 'bcc', ['Bcc: b@x.com'], ['Bcc: b@x.com', 'bcc: custom@co.example']],
-            'mail, custom Bcc, library does not' => ['mail', 'Bcc', false, 'Bcc', ['Bcc: custom@co.example'], ['Bcc: custom@co.example']],
-            'mail, custom bcc, library does not' => ['mail', 'Bcc', false, 'bcc', ['bcc: custom@co.example'], ['bcc: custom@co.example']],
-            'sendmail, custom To, library writes it' => ['sendmail', 'To', true, 'To', ['To: t@x.com'], ['To: t@x.com']],
-            'sendmail, custom to, library writes it' => ['sendmail', 'To', true, 'to', ['To: t@x.com'], ['To: t@x.com', 'to: custom@co.example']],
-            'sendmail, custom To, library does not' => ['sendmail', 'To', false, 'To', ['Bcc: b@x.com', 'To: custom@co.example'], ['Bcc: b@x.com']],
-            'sendmail, custom to, library does not' => ['sendmail', 'To', false, 'to', ['Bcc: b@x.com', 'to: custom@co.example'], ['Bcc: b@x.com', 'to: custom@co.example']],
-            'sendmail, custom Cc, library writes it' => ['sendmail', 'Cc', true, 'Cc', ['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com', 'To: t@x.com']],
-            'sendmail, custom cc, library writes it' => ['sendmail', 'Cc', true, 'cc', ['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example']],
-            'sendmail, custom Cc, library does not' => ['sendmail', 'Cc', false, 'Cc', ['Cc: custom@co.example', 'To: t@x.com'], ['Cc: custom@co.example', 'To: t@x.com']],
-            'sendmail, custom cc, library does not' => ['sendmail', 'Cc', false, 'cc', ['To: t@x.com', 'cc: custom@co.example'], ['To: t@x.com', 'cc: custom@co.example']],
-            'sendmail, custom Bcc, library writes it' => ['sendmail', 'Bcc', true, 'Bcc', ['Bcc: b@x.com', 'To: t@x.com'], ['Bcc: b@x.com', 'To: t@x.com']],
-            'sendmail, custom bcc, library writes it' => ['sendmail', 'Bcc', true, 'bcc', ['Bcc: b@x.com', 'To: t@x.com'], ['Bcc: b@x.com', 'To: t@x.com', 'bcc: custom@co.example']],
-            'sendmail, custom Bcc, library does not' => ['sendmail', 'Bcc', false, 'Bcc', ['Bcc: custom@co.example', 'To: t@x.com'], ['Bcc: custom@co.example', 'To: t@x.com']],
-            'sendmail, custom bcc, library does not' => ['sendmail', 'Bcc', false, 'bcc', ['To: t@x.com', 'bcc: custom@co.example'], ['To: t@x.com', 'bcc: custom@co.example']],
-            'smtp, custom To, library writes it' => ['smtp', 'To', true, 'To', ['To: t@x.com'], ['To: t@x.com']],
-            'smtp, custom to, library writes it' => ['smtp', 'To', true, 'to', ['To: t@x.com'], ['To: t@x.com', 'to: custom@co.example']],
-            'smtp, custom To, library does not' => ['smtp', 'To', false, 'To', ['To: custom@co.example'], []],
-            'smtp, custom to, library does not' => ['smtp', 'To', false, 'to', ['to: custom@co.example'], ['to: custom@co.example']],
-            'smtp, custom Cc, library writes it' => ['smtp', 'Cc', true, 'Cc', ['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com', 'To: t@x.com']],
-            'smtp, custom cc, library writes it' => ['smtp', 'Cc', true, 'cc', ['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example']],
-            'smtp, custom Cc, library does not' => ['smtp', 'Cc', false, 'Cc', ['Cc: custom@co.example', 'To: t@x.com'], ['Cc: custom@co.example', 'To: t@x.com']],
-            'smtp, custom cc, library does not' => ['smtp', 'Cc', false, 'cc', ['To: t@x.com', 'cc: custom@co.example'], ['To: t@x.com', 'cc: custom@co.example']],
-            'smtp, custom Bcc, library writes it' => ['smtp', 'Bcc', true, 'Bcc', ['Bcc: custom@co.example', 'To: t@x.com'], ['Bcc: custom@co.example', 'To: t@x.com']],
-            'smtp, custom bcc, library writes it' => ['smtp', 'Bcc', true, 'bcc', ['To: t@x.com', 'bcc: custom@co.example'], ['To: t@x.com', 'bcc: custom@co.example']],
-            'smtp, custom Bcc, library does not' => ['smtp', 'Bcc', false, 'Bcc', ['Bcc: custom@co.example', 'To: t@x.com'], ['Bcc: custom@co.example', 'To: t@x.com']],
-            'smtp, custom bcc, library does not' => ['smtp', 'Bcc', false, 'bcc', ['To: t@x.com', 'bcc: custom@co.example'], ['To: t@x.com', 'bcc: custom@co.example']],
+            'mail, To, library writes it, one message, custom \'To\'' => ['mail', 'To', true, false, 'To', [['To: custom@co.example']], [['To: custom@co.example']]],
+            'mail, To, library writes it, one message, custom \'to\'' => ['mail', 'To', true, false, 'to', [['to: custom@co.example']], [['to: custom@co.example']]],
+            'mail, To, library writes it, one message, custom \'TO\'' => ['mail', 'To', true, false, 'TO', [['TO: custom@co.example']], [['TO: custom@co.example']]],
+            'mail, To, library writes it, one message, custom \'tO\'' => ['mail', 'To', true, false, 'tO', [['tO: custom@co.example']], [['tO: custom@co.example']]],
+            'mail, To, library writes it, one message, custom \'To \'' => ['mail', 'To', true, false, 'To ', [['To : custom@co.example']], [['To : custom@co.example']]],
+            'mail, To, library writes it, one message, custom \' To\'' => ['mail', 'To', true, false, ' To', [[' To: custom@co.example']], [[' To: custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \'To\'' => ['mail', 'To', true, true, 'To', [['Bcc: b1@x.com, b2@x.com', 'To: custom@co.example'], ['Bcc: b3@x.com', 'To: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: custom@co.example'], ['Bcc: b3@x.com', 'To: custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \'to\'' => ['mail', 'To', true, true, 'to', [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \'TO\'' => ['mail', 'To', true, true, 'TO', [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \'tO\'' => ['mail', 'To', true, true, 'tO', [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \'To \'' => ['mail', 'To', true, true, 'To ', [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']]],
+            'mail, To, library writes it, BCC batches, custom \' To\'' => ['mail', 'To', true, true, ' To', [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']], [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, To, library does not, one message, custom \'To\'' => ['mail', 'To', false, false, 'To', [['Bcc: b@x.com', 'To: custom@co.example']], [['Bcc: b@x.com', 'To: custom@co.example']]],
+            'mail, To, library does not, one message, custom \'to\'' => ['mail', 'To', false, false, 'to', [['Bcc: b@x.com', 'to: custom@co.example']], [['Bcc: b@x.com', 'to: custom@co.example']]],
+            'mail, To, library does not, one message, custom \'TO\'' => ['mail', 'To', false, false, 'TO', [['Bcc: b@x.com', 'TO: custom@co.example']], [['Bcc: b@x.com', 'TO: custom@co.example']]],
+            'mail, To, library does not, one message, custom \'tO\'' => ['mail', 'To', false, false, 'tO', [['Bcc: b@x.com', 'tO: custom@co.example']], [['Bcc: b@x.com', 'tO: custom@co.example']]],
+            'mail, To, library does not, one message, custom \'To \'' => ['mail', 'To', false, false, 'To ', [['Bcc: b@x.com', 'To : custom@co.example']], [['Bcc: b@x.com', 'To : custom@co.example']]],
+            'mail, To, library does not, one message, custom \' To\'' => ['mail', 'To', false, false, ' To', [[' To: custom@co.example', 'Bcc: b@x.com']], [[' To: custom@co.example', 'Bcc: b@x.com']]],
+            'mail, To, library does not, BCC batches, custom \'To\'' => ['mail', 'To', false, true, 'To', [['Bcc: b1@x.com, b2@x.com', 'To: custom@co.example'], ['Bcc: b3@x.com', 'To: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: custom@co.example'], ['Bcc: b3@x.com', 'To: custom@co.example']]],
+            'mail, To, library does not, BCC batches, custom \'to\'' => ['mail', 'To', false, true, 'to', [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']]],
+            'mail, To, library does not, BCC batches, custom \'TO\'' => ['mail', 'To', false, true, 'TO', [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']]],
+            'mail, To, library does not, BCC batches, custom \'tO\'' => ['mail', 'To', false, true, 'tO', [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']]],
+            'mail, To, library does not, BCC batches, custom \'To \'' => ['mail', 'To', false, true, 'To ', [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']]],
+            'mail, To, library does not, BCC batches, custom \' To\'' => ['mail', 'To', false, true, ' To', [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']], [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, Cc, library writes it, one message, custom \'Cc\'' => ['mail', 'Cc', true, false, 'Cc', [['Cc: c@x.com']], [['Cc: c@x.com']]],
+            'mail, Cc, library writes it, one message, custom \'cc\'' => ['mail', 'Cc', true, false, 'cc', [['Cc: c@x.com']], [['Cc: c@x.com', 'cc: custom@co.example']]],
+            'mail, Cc, library writes it, one message, custom \'CC\'' => ['mail', 'Cc', true, false, 'CC', [['Cc: c@x.com']], [['CC: custom@co.example', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, one message, custom \'cC\'' => ['mail', 'Cc', true, false, 'cC', [['Cc: c@x.com']], [['Cc: c@x.com', 'cC: custom@co.example']]],
+            'mail, Cc, library writes it, one message, custom \'Cc \'' => ['mail', 'Cc', true, false, 'Cc ', [['Cc: c@x.com']], [['Cc : custom@co.example', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, one message, custom \' Cc\'' => ['mail', 'Cc', true, false, ' Cc', [['Cc: c@x.com']], [[' Cc: custom@co.example', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, BCC batches, custom \'Cc\'' => ['mail', 'Cc', true, true, 'Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, BCC batches, custom \'cc\'' => ['mail', 'Cc', true, true, 'cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'Cc: c@x.com', 'cc: custom@co.example']]],
+            'mail, Cc, library writes it, BCC batches, custom \'CC\'' => ['mail', 'Cc', true, true, 'CC', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'CC: custom@co.example', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, BCC batches, custom \'cC\'' => ['mail', 'Cc', true, true, 'cC', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'Cc: c@x.com', 'cC: custom@co.example']]],
+            'mail, Cc, library writes it, BCC batches, custom \'Cc \'' => ['mail', 'Cc', true, true, 'Cc ', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc : custom@co.example', 'Cc: c@x.com']]],
+            'mail, Cc, library writes it, BCC batches, custom \' Cc\'' => ['mail', 'Cc', true, true, ' Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com', 'Cc: c@x.com']]],
+            'mail, Cc, library does not, one message, custom \'Cc\'' => ['mail', 'Cc', false, false, 'Cc', [['Cc: custom@co.example']], [['Cc: custom@co.example']]],
+            'mail, Cc, library does not, one message, custom \'cc\'' => ['mail', 'Cc', false, false, 'cc', [['cc: custom@co.example']], [['cc: custom@co.example']]],
+            'mail, Cc, library does not, one message, custom \'CC\'' => ['mail', 'Cc', false, false, 'CC', [['CC: custom@co.example']], [['CC: custom@co.example']]],
+            'mail, Cc, library does not, one message, custom \'cC\'' => ['mail', 'Cc', false, false, 'cC', [['cC: custom@co.example']], [['cC: custom@co.example']]],
+            'mail, Cc, library does not, one message, custom \'Cc \'' => ['mail', 'Cc', false, false, 'Cc ', [['Cc : custom@co.example']], [['Cc : custom@co.example']]],
+            'mail, Cc, library does not, one message, custom \' Cc\'' => ['mail', 'Cc', false, false, ' Cc', [[' Cc: custom@co.example']], [[' Cc: custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \'Cc\'' => ['mail', 'Cc', false, true, 'Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: custom@co.example'], ['Bcc: b3@x.com', 'Cc: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'Cc: custom@co.example'], ['Bcc: b3@x.com', 'Cc: custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \'cc\'' => ['mail', 'Cc', false, true, 'cc', [['Bcc: b1@x.com, b2@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'cc: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'cc: custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \'CC\'' => ['mail', 'Cc', false, true, 'CC', [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example'], ['Bcc: b3@x.com', 'CC: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example'], ['Bcc: b3@x.com', 'CC: custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \'cC\'' => ['mail', 'Cc', false, true, 'cC', [['Bcc: b1@x.com, b2@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'cC: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'cC: custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \'Cc \'' => ['mail', 'Cc', false, true, 'Cc ', [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example'], ['Bcc: b3@x.com', 'Cc : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example'], ['Bcc: b3@x.com', 'Cc : custom@co.example']]],
+            'mail, Cc, library does not, BCC batches, custom \' Cc\'' => ['mail', 'Cc', false, true, ' Cc', [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com']], [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, Bcc, library writes it, one message, custom \'Bcc\'' => ['mail', 'Bcc', true, false, 'Bcc', [['Bcc: b@x.com']], [['Bcc: b@x.com']]],
+            'mail, Bcc, library writes it, one message, custom \'bcc\'' => ['mail', 'Bcc', true, false, 'bcc', [['Bcc: b@x.com']], [['Bcc: b@x.com', 'bcc: custom@co.example']]],
+            'mail, Bcc, library writes it, one message, custom \'BCC\'' => ['mail', 'Bcc', true, false, 'BCC', [['Bcc: b@x.com']], [['BCC: custom@co.example', 'Bcc: b@x.com']]],
+            'mail, Bcc, library writes it, one message, custom \'bCC\'' => ['mail', 'Bcc', true, false, 'bCC', [['Bcc: b@x.com']], [['Bcc: b@x.com', 'bCC: custom@co.example']]],
+            'mail, Bcc, library writes it, one message, custom \'Bcc \'' => ['mail', 'Bcc', true, false, 'Bcc ', [['Bcc: b@x.com']], [['Bcc : custom@co.example', 'Bcc: b@x.com']]],
+            'mail, Bcc, library writes it, one message, custom \' Bcc\'' => ['mail', 'Bcc', true, false, ' Bcc', [['Bcc: b@x.com']], [[' Bcc: custom@co.example', 'Bcc: b@x.com']]],
+            'mail, Bcc, library writes it, BCC batches, custom \'Bcc\'' => ['mail', 'Bcc', true, true, 'Bcc', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']]],
+            'mail, Bcc, library writes it, BCC batches, custom \'bcc\'' => ['mail', 'Bcc', true, true, 'bcc', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'bcc: custom@co.example'], ['Bcc: b3@x.com', 'bcc: custom@co.example']]],
+            'mail, Bcc, library writes it, BCC batches, custom \'BCC\'' => ['mail', 'Bcc', true, true, 'BCC', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['BCC: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], ['BCC: custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, Bcc, library writes it, BCC batches, custom \'bCC\'' => ['mail', 'Bcc', true, true, 'bCC', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'bCC: custom@co.example'], ['Bcc: b3@x.com', 'bCC: custom@co.example']]],
+            'mail, Bcc, library writes it, BCC batches, custom \'Bcc \'' => ['mail', 'Bcc', true, true, 'Bcc ', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['Bcc : custom@co.example', 'Bcc: b1@x.com, b2@x.com'], ['Bcc : custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, Bcc, library writes it, BCC batches, custom \' Bcc\'' => ['mail', 'Bcc', true, true, ' Bcc', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [[' Bcc: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' Bcc: custom@co.example', 'Bcc: b3@x.com']]],
+            'mail, Bcc, library does not, one message, custom \'Bcc\'' => ['mail', 'Bcc', false, false, 'Bcc', [['Bcc: custom@co.example']], [['Bcc: custom@co.example']]],
+            'mail, Bcc, library does not, one message, custom \'bcc\'' => ['mail', 'Bcc', false, false, 'bcc', [['bcc: custom@co.example']], [['bcc: custom@co.example']]],
+            'mail, Bcc, library does not, one message, custom \'BCC\'' => ['mail', 'Bcc', false, false, 'BCC', [['BCC: custom@co.example']], [['BCC: custom@co.example']]],
+            'mail, Bcc, library does not, one message, custom \'bCC\'' => ['mail', 'Bcc', false, false, 'bCC', [['bCC: custom@co.example']], [['bCC: custom@co.example']]],
+            'mail, Bcc, library does not, one message, custom \'Bcc \'' => ['mail', 'Bcc', false, false, 'Bcc ', [['Bcc : custom@co.example']], [['Bcc : custom@co.example']]],
+            'mail, Bcc, library does not, one message, custom \' Bcc\'' => ['mail', 'Bcc', false, false, ' Bcc', [[' Bcc: custom@co.example']], [[' Bcc: custom@co.example']]],
+            'sendmail, To, library writes it, one message, custom \'To\'' => ['sendmail', 'To', true, false, 'To', [['To: t@x.com']], [['To: t@x.com']]],
+            'sendmail, To, library writes it, one message, custom \'to\'' => ['sendmail', 'To', true, false, 'to', [['To: t@x.com', 'to: custom@co.example']], [['To: t@x.com', 'to: custom@co.example']]],
+            'sendmail, To, library writes it, one message, custom \'TO\'' => ['sendmail', 'To', true, false, 'TO', [['TO: custom@co.example', 'To: t@x.com']], [['TO: custom@co.example', 'To: t@x.com']]],
+            'sendmail, To, library writes it, one message, custom \'tO\'' => ['sendmail', 'To', true, false, 'tO', [['To: t@x.com', 'tO: custom@co.example']], [['To: t@x.com', 'tO: custom@co.example']]],
+            'sendmail, To, library writes it, one message, custom \'To \'' => ['sendmail', 'To', true, false, 'To ', [['To : custom@co.example', 'To: t@x.com']], [['To : custom@co.example', 'To: t@x.com']]],
+            'sendmail, To, library writes it, one message, custom \' To\'' => ['sendmail', 'To', true, false, ' To', [[' To: custom@co.example', 'To: t@x.com']], [[' To: custom@co.example', 'To: t@x.com']]],
+            'sendmail, To, library writes it, BCC batches, custom \'To\'' => ['sendmail', 'To', true, true, 'To', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']]],
+            'sendmail, To, library writes it, BCC batches, custom \'to\'' => ['sendmail', 'To', true, true, 'to', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']]],
+            'sendmail, To, library writes it, BCC batches, custom \'TO\'' => ['sendmail', 'To', true, true, 'TO', [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'TO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'TO: custom@co.example']]],
+            'sendmail, To, library writes it, BCC batches, custom \'tO\'' => ['sendmail', 'To', true, true, 'tO', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']]],
+            'sendmail, To, library writes it, BCC batches, custom \'To \'' => ['sendmail', 'To', true, true, 'To ', [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'To : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'To : custom@co.example']]],
+            'sendmail, To, library writes it, BCC batches, custom \' To\'' => ['sendmail', 'To', true, true, ' To', [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']], [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, To, library does not, one message, custom \'To\'' => ['sendmail', 'To', false, false, 'To', [['Bcc: b@x.com']], [['Bcc: b@x.com']]],
+            'sendmail, To, library does not, one message, custom \'to\'' => ['sendmail', 'To', false, false, 'to', [['Bcc: b@x.com', 'to: custom@co.example']], [['Bcc: b@x.com', 'to: custom@co.example']]],
+            'sendmail, To, library does not, one message, custom \'TO\'' => ['sendmail', 'To', false, false, 'TO', [['Bcc: b@x.com', 'TO: custom@co.example']], [['Bcc: b@x.com', 'TO: custom@co.example']]],
+            'sendmail, To, library does not, one message, custom \'tO\'' => ['sendmail', 'To', false, false, 'tO', [['Bcc: b@x.com', 'tO: custom@co.example']], [['Bcc: b@x.com', 'tO: custom@co.example']]],
+            'sendmail, To, library does not, one message, custom \'To \'' => ['sendmail', 'To', false, false, 'To ', [['Bcc: b@x.com', 'To : custom@co.example']], [['Bcc: b@x.com', 'To : custom@co.example']]],
+            'sendmail, To, library does not, one message, custom \' To\'' => ['sendmail', 'To', false, false, ' To', [[' To: custom@co.example', 'Bcc: b@x.com']], [[' To: custom@co.example', 'Bcc: b@x.com']]],
+            'sendmail, To, library does not, BCC batches, custom \'To\'' => ['sendmail', 'To', false, true, 'To', [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com'], ['Bcc: b3@x.com']]],
+            'sendmail, To, library does not, BCC batches, custom \'to\'' => ['sendmail', 'To', false, true, 'to', [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'to: custom@co.example'], ['Bcc: b3@x.com', 'to: custom@co.example']]],
+            'sendmail, To, library does not, BCC batches, custom \'TO\'' => ['sendmail', 'To', false, true, 'TO', [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'TO: custom@co.example'], ['Bcc: b3@x.com', 'TO: custom@co.example']]],
+            'sendmail, To, library does not, BCC batches, custom \'tO\'' => ['sendmail', 'To', false, true, 'tO', [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'tO: custom@co.example'], ['Bcc: b3@x.com', 'tO: custom@co.example']]],
+            'sendmail, To, library does not, BCC batches, custom \'To \'' => ['sendmail', 'To', false, true, 'To ', [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To : custom@co.example'], ['Bcc: b3@x.com', 'To : custom@co.example']]],
+            'sendmail, To, library does not, BCC batches, custom \' To\'' => ['sendmail', 'To', false, true, ' To', [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']], [[' To: custom@co.example', 'Bcc: b1@x.com, b2@x.com'], [' To: custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, Cc, library writes it, one message, custom \'Cc\'' => ['sendmail', 'Cc', true, false, 'Cc', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com']]],
+            'sendmail, Cc, library writes it, one message, custom \'cc\'' => ['sendmail', 'Cc', true, false, 'cc', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example']]],
+            'sendmail, Cc, library writes it, one message, custom \'CC\'' => ['sendmail', 'Cc', true, false, 'CC', [['Cc: c@x.com', 'To: t@x.com']], [['CC: custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'sendmail, Cc, library writes it, one message, custom \'cC\'' => ['sendmail', 'Cc', true, false, 'cC', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cC: custom@co.example']]],
+            'sendmail, Cc, library writes it, one message, custom \'Cc \'' => ['sendmail', 'Cc', true, false, 'Cc ', [['Cc: c@x.com', 'To: t@x.com']], [['Cc : custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'sendmail, Cc, library writes it, one message, custom \' Cc\'' => ['sendmail', 'Cc', true, false, ' Cc', [['Cc: c@x.com', 'To: t@x.com']], [[' Cc: custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \'Cc\'' => ['sendmail', 'Cc', true, true, 'Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \'cc\'' => ['sendmail', 'Cc', true, true, 'cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'Cc: c@x.com', 'cc: custom@co.example']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \'CC\'' => ['sendmail', 'Cc', true, true, 'CC', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'CC: custom@co.example', 'Cc: c@x.com']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \'cC\'' => ['sendmail', 'Cc', true, true, 'cC', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'Cc: c@x.com', 'cC: custom@co.example']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \'Cc \'' => ['sendmail', 'Cc', true, true, 'Cc ', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc : custom@co.example', 'Cc: c@x.com']]],
+            'sendmail, Cc, library writes it, BCC batches, custom \' Cc\'' => ['sendmail', 'Cc', true, true, ' Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: c@x.com']], [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'Cc: c@x.com', 'To: t@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com', 'Cc: c@x.com']]],
+            'sendmail, Cc, library does not, one message, custom \'Cc\'' => ['sendmail', 'Cc', false, false, 'Cc', [['Cc: custom@co.example', 'To: t@x.com']], [['Cc: custom@co.example', 'To: t@x.com']]],
+            'sendmail, Cc, library does not, one message, custom \'cc\'' => ['sendmail', 'Cc', false, false, 'cc', [['To: t@x.com', 'cc: custom@co.example']], [['To: t@x.com', 'cc: custom@co.example']]],
+            'sendmail, Cc, library does not, one message, custom \'CC\'' => ['sendmail', 'Cc', false, false, 'CC', [['CC: custom@co.example', 'To: t@x.com']], [['CC: custom@co.example', 'To: t@x.com']]],
+            'sendmail, Cc, library does not, one message, custom \'cC\'' => ['sendmail', 'Cc', false, false, 'cC', [['To: t@x.com', 'cC: custom@co.example']], [['To: t@x.com', 'cC: custom@co.example']]],
+            'sendmail, Cc, library does not, one message, custom \'Cc \'' => ['sendmail', 'Cc', false, false, 'Cc ', [['Cc : custom@co.example', 'To: t@x.com']], [['Cc : custom@co.example', 'To: t@x.com']]],
+            'sendmail, Cc, library does not, one message, custom \' Cc\'' => ['sendmail', 'Cc', false, false, ' Cc', [[' Cc: custom@co.example', 'To: t@x.com']], [[' Cc: custom@co.example', 'To: t@x.com']]],
+            'sendmail, Cc, library does not, BCC batches, custom \'Cc\'' => ['sendmail', 'Cc', false, true, 'Cc', [['Bcc: b1@x.com, b2@x.com', 'Cc: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'Cc: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc: custom@co.example']]],
+            'sendmail, Cc, library does not, BCC batches, custom \'cc\'' => ['sendmail', 'Cc', false, true, 'cc', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'cc: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'cc: custom@co.example'], ['Bcc: b3@x.com', 'cc: custom@co.example']]],
+            'sendmail, Cc, library does not, BCC batches, custom \'CC\'' => ['sendmail', 'Cc', false, true, 'CC', [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'CC: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'CC: custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'CC: custom@co.example']]],
+            'sendmail, Cc, library does not, BCC batches, custom \'cC\'' => ['sendmail', 'Cc', false, true, 'cC', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'cC: custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'cC: custom@co.example'], ['Bcc: b3@x.com', 'cC: custom@co.example']]],
+            'sendmail, Cc, library does not, BCC batches, custom \'Cc \'' => ['sendmail', 'Cc', false, true, 'Cc ', [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc : custom@co.example']], [['Bcc: b1@x.com, b2@x.com', 'Cc : custom@co.example', 'To: t@x.com'], ['Bcc: b3@x.com', 'Cc : custom@co.example']]],
+            'sendmail, Cc, library does not, BCC batches, custom \' Cc\'' => ['sendmail', 'Cc', false, true, ' Cc', [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com']], [[' Cc: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], [' Cc: custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, Bcc, library writes it, one message, custom \'Bcc\'' => ['sendmail', 'Bcc', true, false, 'Bcc', [['Bcc: b@x.com', 'To: t@x.com']], [['Bcc: b@x.com', 'To: t@x.com']]],
+            'sendmail, Bcc, library writes it, one message, custom \'bcc\'' => ['sendmail', 'Bcc', true, false, 'bcc', [['Bcc: b@x.com', 'To: t@x.com']], [['Bcc: b@x.com', 'To: t@x.com', 'bcc: custom@co.example']]],
+            'sendmail, Bcc, library writes it, one message, custom \'BCC\'' => ['sendmail', 'Bcc', true, false, 'BCC', [['Bcc: b@x.com', 'To: t@x.com']], [['BCC: custom@co.example', 'Bcc: b@x.com', 'To: t@x.com']]],
+            'sendmail, Bcc, library writes it, one message, custom \'bCC\'' => ['sendmail', 'Bcc', true, false, 'bCC', [['Bcc: b@x.com', 'To: t@x.com']], [['Bcc: b@x.com', 'To: t@x.com', 'bCC: custom@co.example']]],
+            'sendmail, Bcc, library writes it, one message, custom \'Bcc \'' => ['sendmail', 'Bcc', true, false, 'Bcc ', [['Bcc: b@x.com', 'To: t@x.com']], [['Bcc : custom@co.example', 'Bcc: b@x.com', 'To: t@x.com']]],
+            'sendmail, Bcc, library writes it, one message, custom \' Bcc\'' => ['sendmail', 'Bcc', true, false, ' Bcc', [['Bcc: b@x.com', 'To: t@x.com']], [[' Bcc: custom@co.example', 'Bcc: b@x.com', 'To: t@x.com']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \'Bcc\'' => ['sendmail', 'Bcc', true, true, 'Bcc', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \'bcc\'' => ['sendmail', 'Bcc', true, true, 'bcc', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'bcc: custom@co.example'], ['Bcc: b3@x.com', 'bcc: custom@co.example']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \'BCC\'' => ['sendmail', 'Bcc', true, true, 'BCC', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['BCC: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['BCC: custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \'bCC\'' => ['sendmail', 'Bcc', true, true, 'bCC', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com', 'bCC: custom@co.example'], ['Bcc: b3@x.com', 'bCC: custom@co.example']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \'Bcc \'' => ['sendmail', 'Bcc', true, true, 'Bcc ', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [['Bcc : custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc : custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, Bcc, library writes it, BCC batches, custom \' Bcc\'' => ['sendmail', 'Bcc', true, true, ' Bcc', [['Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], ['Bcc: b3@x.com']], [[' Bcc: custom@co.example', 'Bcc: b1@x.com, b2@x.com', 'To: t@x.com'], [' Bcc: custom@co.example', 'Bcc: b3@x.com']]],
+            'sendmail, Bcc, library does not, one message, custom \'Bcc\'' => ['sendmail', 'Bcc', false, false, 'Bcc', [['Bcc: custom@co.example', 'To: t@x.com']], [['Bcc: custom@co.example', 'To: t@x.com']]],
+            'sendmail, Bcc, library does not, one message, custom \'bcc\'' => ['sendmail', 'Bcc', false, false, 'bcc', [['To: t@x.com', 'bcc: custom@co.example']], [['To: t@x.com', 'bcc: custom@co.example']]],
+            'sendmail, Bcc, library does not, one message, custom \'BCC\'' => ['sendmail', 'Bcc', false, false, 'BCC', [['BCC: custom@co.example', 'To: t@x.com']], [['BCC: custom@co.example', 'To: t@x.com']]],
+            'sendmail, Bcc, library does not, one message, custom \'bCC\'' => ['sendmail', 'Bcc', false, false, 'bCC', [['To: t@x.com', 'bCC: custom@co.example']], [['To: t@x.com', 'bCC: custom@co.example']]],
+            'sendmail, Bcc, library does not, one message, custom \'Bcc \'' => ['sendmail', 'Bcc', false, false, 'Bcc ', [['Bcc : custom@co.example', 'To: t@x.com']], [['Bcc : custom@co.example', 'To: t@x.com']]],
+            'sendmail, Bcc, library does not, one message, custom \' Bcc\'' => ['sendmail', 'Bcc', false, false, ' Bcc', [[' Bcc: custom@co.example', 'To: t@x.com']], [[' Bcc: custom@co.example', 'To: t@x.com']]],
+            'smtp, To, library writes it, one message, custom \'To\'' => ['smtp', 'To', true, false, 'To', [['To: t@x.com']], [['To: t@x.com']]],
+            'smtp, To, library writes it, one message, custom \'to\'' => ['smtp', 'To', true, false, 'to', [['To: t@x.com', 'to: custom@co.example']], [['To: t@x.com', 'to: custom@co.example']]],
+            'smtp, To, library writes it, one message, custom \'TO\'' => ['smtp', 'To', true, false, 'TO', [['TO: custom@co.example', 'To: t@x.com']], [['TO: custom@co.example', 'To: t@x.com']]],
+            'smtp, To, library writes it, one message, custom \'tO\'' => ['smtp', 'To', true, false, 'tO', [['To: t@x.com', 'tO: custom@co.example']], [['To: t@x.com', 'tO: custom@co.example']]],
+            'smtp, To, library writes it, one message, custom \'To \'' => ['smtp', 'To', true, false, 'To ', [['To : custom@co.example', 'To: t@x.com']], [['To : custom@co.example', 'To: t@x.com']]],
+            'smtp, To, library writes it, one message, custom \' To\'' => ['smtp', 'To', true, false, ' To', [[' To: custom@co.example', 'To: t@x.com']], [[' To: custom@co.example', 'To: t@x.com']]],
+            'smtp, To, library writes it, BCC batches, custom \'To\'' => ['smtp', 'To', true, true, 'To', [['To: t@x.com'], []], [['To: t@x.com'], []]],
+            'smtp, To, library writes it, BCC batches, custom \'to\'' => ['smtp', 'To', true, true, 'to', [['To: t@x.com', 'to: custom@co.example'], ['to: custom@co.example']], [['To: t@x.com', 'to: custom@co.example'], ['to: custom@co.example']]],
+            'smtp, To, library writes it, BCC batches, custom \'TO\'' => ['smtp', 'To', true, true, 'TO', [['TO: custom@co.example', 'To: t@x.com'], ['TO: custom@co.example']], [['TO: custom@co.example', 'To: t@x.com'], ['TO: custom@co.example']]],
+            'smtp, To, library writes it, BCC batches, custom \'tO\'' => ['smtp', 'To', true, true, 'tO', [['To: t@x.com', 'tO: custom@co.example'], ['tO: custom@co.example']], [['To: t@x.com', 'tO: custom@co.example'], ['tO: custom@co.example']]],
+            'smtp, To, library writes it, BCC batches, custom \'To \'' => ['smtp', 'To', true, true, 'To ', [['To : custom@co.example', 'To: t@x.com'], ['To : custom@co.example']], [['To : custom@co.example', 'To: t@x.com'], ['To : custom@co.example']]],
+            'smtp, To, library writes it, BCC batches, custom \' To\'' => ['smtp', 'To', true, true, ' To', [[' To: custom@co.example', 'To: t@x.com'], [' To: custom@co.example']], [[' To: custom@co.example', 'To: t@x.com'], [' To: custom@co.example']]],
+            'smtp, To, library does not, one message, custom \'To\'' => ['smtp', 'To', false, false, 'To', [[]], [[]]],
+            'smtp, To, library does not, one message, custom \'to\'' => ['smtp', 'To', false, false, 'to', [['to: custom@co.example']], [['to: custom@co.example']]],
+            'smtp, To, library does not, one message, custom \'TO\'' => ['smtp', 'To', false, false, 'TO', [['TO: custom@co.example']], [['TO: custom@co.example']]],
+            'smtp, To, library does not, one message, custom \'tO\'' => ['smtp', 'To', false, false, 'tO', [['tO: custom@co.example']], [['tO: custom@co.example']]],
+            'smtp, To, library does not, one message, custom \'To \'' => ['smtp', 'To', false, false, 'To ', [['To : custom@co.example']], [['To : custom@co.example']]],
+            'smtp, To, library does not, one message, custom \' To\'' => ['smtp', 'To', false, false, ' To', [[' To: custom@co.example']], [[' To: custom@co.example']]],
+            'smtp, To, library does not, BCC batches, custom \'To\'' => ['smtp', 'To', false, true, 'To', [[], []], [[], []]],
+            'smtp, To, library does not, BCC batches, custom \'to\'' => ['smtp', 'To', false, true, 'to', [['to: custom@co.example'], ['to: custom@co.example']], [['to: custom@co.example'], ['to: custom@co.example']]],
+            'smtp, To, library does not, BCC batches, custom \'TO\'' => ['smtp', 'To', false, true, 'TO', [['TO: custom@co.example'], ['TO: custom@co.example']], [['TO: custom@co.example'], ['TO: custom@co.example']]],
+            'smtp, To, library does not, BCC batches, custom \'tO\'' => ['smtp', 'To', false, true, 'tO', [['tO: custom@co.example'], ['tO: custom@co.example']], [['tO: custom@co.example'], ['tO: custom@co.example']]],
+            'smtp, To, library does not, BCC batches, custom \'To \'' => ['smtp', 'To', false, true, 'To ', [['To : custom@co.example'], ['To : custom@co.example']], [['To : custom@co.example'], ['To : custom@co.example']]],
+            'smtp, To, library does not, BCC batches, custom \' To\'' => ['smtp', 'To', false, true, ' To', [[' To: custom@co.example'], [' To: custom@co.example']], [[' To: custom@co.example'], [' To: custom@co.example']]],
+            'smtp, Cc, library writes it, one message, custom \'Cc\'' => ['smtp', 'Cc', true, false, 'Cc', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com']]],
+            'smtp, Cc, library writes it, one message, custom \'cc\'' => ['smtp', 'Cc', true, false, 'cc', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example']]],
+            'smtp, Cc, library writes it, one message, custom \'CC\'' => ['smtp', 'Cc', true, false, 'CC', [['Cc: c@x.com', 'To: t@x.com']], [['CC: custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'smtp, Cc, library writes it, one message, custom \'cC\'' => ['smtp', 'Cc', true, false, 'cC', [['Cc: c@x.com', 'To: t@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cC: custom@co.example']]],
+            'smtp, Cc, library writes it, one message, custom \'Cc \'' => ['smtp', 'Cc', true, false, 'Cc ', [['Cc: c@x.com', 'To: t@x.com']], [['Cc : custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'smtp, Cc, library writes it, one message, custom \' Cc\'' => ['smtp', 'Cc', true, false, ' Cc', [['Cc: c@x.com', 'To: t@x.com']], [[' Cc: custom@co.example', 'Cc: c@x.com', 'To: t@x.com']]],
+            'smtp, Cc, library writes it, BCC batches, custom \'Cc\'' => ['smtp', 'Cc', true, true, 'Cc', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']]],
+            'smtp, Cc, library writes it, BCC batches, custom \'cc\'' => ['smtp', 'Cc', true, true, 'cc', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cc: custom@co.example'], ['Cc: c@x.com', 'cc: custom@co.example']]],
+            'smtp, Cc, library writes it, BCC batches, custom \'CC\'' => ['smtp', 'Cc', true, true, 'CC', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [['CC: custom@co.example', 'Cc: c@x.com', 'To: t@x.com'], ['CC: custom@co.example', 'Cc: c@x.com']]],
+            'smtp, Cc, library writes it, BCC batches, custom \'cC\'' => ['smtp', 'Cc', true, true, 'cC', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [['Cc: c@x.com', 'To: t@x.com', 'cC: custom@co.example'], ['Cc: c@x.com', 'cC: custom@co.example']]],
+            'smtp, Cc, library writes it, BCC batches, custom \'Cc \'' => ['smtp', 'Cc', true, true, 'Cc ', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [['Cc : custom@co.example', 'Cc: c@x.com', 'To: t@x.com'], ['Cc : custom@co.example', 'Cc: c@x.com']]],
+            'smtp, Cc, library writes it, BCC batches, custom \' Cc\'' => ['smtp', 'Cc', true, true, ' Cc', [['Cc: c@x.com', 'To: t@x.com'], ['Cc: c@x.com']], [[' Cc: custom@co.example', 'Cc: c@x.com', 'To: t@x.com'], [' Cc: custom@co.example', 'Cc: c@x.com']]],
+            'smtp, Cc, library does not, one message, custom \'Cc\'' => ['smtp', 'Cc', false, false, 'Cc', [['Cc: custom@co.example', 'To: t@x.com']], [['Cc: custom@co.example', 'To: t@x.com']]],
+            'smtp, Cc, library does not, one message, custom \'cc\'' => ['smtp', 'Cc', false, false, 'cc', [['To: t@x.com', 'cc: custom@co.example']], [['To: t@x.com', 'cc: custom@co.example']]],
+            'smtp, Cc, library does not, one message, custom \'CC\'' => ['smtp', 'Cc', false, false, 'CC', [['CC: custom@co.example', 'To: t@x.com']], [['CC: custom@co.example', 'To: t@x.com']]],
+            'smtp, Cc, library does not, one message, custom \'cC\'' => ['smtp', 'Cc', false, false, 'cC', [['To: t@x.com', 'cC: custom@co.example']], [['To: t@x.com', 'cC: custom@co.example']]],
+            'smtp, Cc, library does not, one message, custom \'Cc \'' => ['smtp', 'Cc', false, false, 'Cc ', [['Cc : custom@co.example', 'To: t@x.com']], [['Cc : custom@co.example', 'To: t@x.com']]],
+            'smtp, Cc, library does not, one message, custom \' Cc\'' => ['smtp', 'Cc', false, false, ' Cc', [[' Cc: custom@co.example', 'To: t@x.com']], [[' Cc: custom@co.example', 'To: t@x.com']]],
+            'smtp, Cc, library does not, BCC batches, custom \'Cc\'' => ['smtp', 'Cc', false, true, 'Cc', [['Cc: custom@co.example', 'To: t@x.com'], ['Cc: custom@co.example']], [['Cc: custom@co.example', 'To: t@x.com'], ['Cc: custom@co.example']]],
+            'smtp, Cc, library does not, BCC batches, custom \'cc\'' => ['smtp', 'Cc', false, true, 'cc', [['To: t@x.com', 'cc: custom@co.example'], ['cc: custom@co.example']], [['To: t@x.com', 'cc: custom@co.example'], ['cc: custom@co.example']]],
+            'smtp, Cc, library does not, BCC batches, custom \'CC\'' => ['smtp', 'Cc', false, true, 'CC', [['CC: custom@co.example', 'To: t@x.com'], ['CC: custom@co.example']], [['CC: custom@co.example', 'To: t@x.com'], ['CC: custom@co.example']]],
+            'smtp, Cc, library does not, BCC batches, custom \'cC\'' => ['smtp', 'Cc', false, true, 'cC', [['To: t@x.com', 'cC: custom@co.example'], ['cC: custom@co.example']], [['To: t@x.com', 'cC: custom@co.example'], ['cC: custom@co.example']]],
+            'smtp, Cc, library does not, BCC batches, custom \'Cc \'' => ['smtp', 'Cc', false, true, 'Cc ', [['Cc : custom@co.example', 'To: t@x.com'], ['Cc : custom@co.example']], [['Cc : custom@co.example', 'To: t@x.com'], ['Cc : custom@co.example']]],
+            'smtp, Cc, library does not, BCC batches, custom \' Cc\'' => ['smtp', 'Cc', false, true, ' Cc', [[' Cc: custom@co.example', 'To: t@x.com'], [' Cc: custom@co.example']], [[' Cc: custom@co.example', 'To: t@x.com'], [' Cc: custom@co.example']]],
+            'smtp, Bcc, library writes it, one message, custom \'Bcc\'' => ['smtp', 'Bcc', true, false, 'Bcc', [['Bcc: custom@co.example', 'To: t@x.com']], [['Bcc: custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library writes it, one message, custom \'bcc\'' => ['smtp', 'Bcc', true, false, 'bcc', [['To: t@x.com', 'bcc: custom@co.example']], [['To: t@x.com', 'bcc: custom@co.example']]],
+            'smtp, Bcc, library writes it, one message, custom \'BCC\'' => ['smtp', 'Bcc', true, false, 'BCC', [['BCC: custom@co.example', 'To: t@x.com']], [['BCC: custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library writes it, one message, custom \'bCC\'' => ['smtp', 'Bcc', true, false, 'bCC', [['To: t@x.com', 'bCC: custom@co.example']], [['To: t@x.com', 'bCC: custom@co.example']]],
+            'smtp, Bcc, library writes it, one message, custom \'Bcc \'' => ['smtp', 'Bcc', true, false, 'Bcc ', [['Bcc : custom@co.example', 'To: t@x.com']], [['Bcc : custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library writes it, one message, custom \' Bcc\'' => ['smtp', 'Bcc', true, false, ' Bcc', [[' Bcc: custom@co.example', 'To: t@x.com']], [[' Bcc: custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \'Bcc\'' => ['smtp', 'Bcc', true, true, 'Bcc', [['Bcc: custom@co.example', 'To: t@x.com'], ['Bcc: custom@co.example']], [['Bcc: custom@co.example', 'To: t@x.com'], ['Bcc: custom@co.example']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \'bcc\'' => ['smtp', 'Bcc', true, true, 'bcc', [['To: t@x.com', 'bcc: custom@co.example'], ['bcc: custom@co.example']], [['To: t@x.com', 'bcc: custom@co.example'], ['bcc: custom@co.example']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \'BCC\'' => ['smtp', 'Bcc', true, true, 'BCC', [['BCC: custom@co.example', 'To: t@x.com'], ['BCC: custom@co.example']], [['BCC: custom@co.example', 'To: t@x.com'], ['BCC: custom@co.example']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \'bCC\'' => ['smtp', 'Bcc', true, true, 'bCC', [['To: t@x.com', 'bCC: custom@co.example'], ['bCC: custom@co.example']], [['To: t@x.com', 'bCC: custom@co.example'], ['bCC: custom@co.example']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \'Bcc \'' => ['smtp', 'Bcc', true, true, 'Bcc ', [['Bcc : custom@co.example', 'To: t@x.com'], ['Bcc : custom@co.example']], [['Bcc : custom@co.example', 'To: t@x.com'], ['Bcc : custom@co.example']]],
+            'smtp, Bcc, library writes it, BCC batches, custom \' Bcc\'' => ['smtp', 'Bcc', true, true, ' Bcc', [[' Bcc: custom@co.example', 'To: t@x.com'], [' Bcc: custom@co.example']], [[' Bcc: custom@co.example', 'To: t@x.com'], [' Bcc: custom@co.example']]],
+            'smtp, Bcc, library does not, one message, custom \'Bcc\'' => ['smtp', 'Bcc', false, false, 'Bcc', [['Bcc: custom@co.example', 'To: t@x.com']], [['Bcc: custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library does not, one message, custom \'bcc\'' => ['smtp', 'Bcc', false, false, 'bcc', [['To: t@x.com', 'bcc: custom@co.example']], [['To: t@x.com', 'bcc: custom@co.example']]],
+            'smtp, Bcc, library does not, one message, custom \'BCC\'' => ['smtp', 'Bcc', false, false, 'BCC', [['BCC: custom@co.example', 'To: t@x.com']], [['BCC: custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library does not, one message, custom \'bCC\'' => ['smtp', 'Bcc', false, false, 'bCC', [['To: t@x.com', 'bCC: custom@co.example']], [['To: t@x.com', 'bCC: custom@co.example']]],
+            'smtp, Bcc, library does not, one message, custom \'Bcc \'' => ['smtp', 'Bcc', false, false, 'Bcc ', [['Bcc : custom@co.example', 'To: t@x.com']], [['Bcc : custom@co.example', 'To: t@x.com']]],
+            'smtp, Bcc, library does not, one message, custom \' Bcc\'' => ['smtp', 'Bcc', false, false, ' Bcc', [[' Bcc: custom@co.example', 'To: t@x.com']], [[' Bcc: custom@co.example', 'To: t@x.com']]],
         ];
     }
 
     /**
      * @dataProvider matrix
      *
-     * @param list<string> $expected     The header lines now.
-     * @param list<string> $expectedBase The header lines 3.0.0 produced.
+     * @param list<list<string>> $expected     Header lines per message, now.
+     * @param list<list<string>> $expectedBase Header lines per message, 3.0.0.
      */
     public function testCustomRecipientHeaders(
         string $transport,
         string $header,
         bool $libraryWrites,
+        bool $batch,
         string $customName,
         array $expected,
         array $expectedBase,
     ): void {
-        $captured = '';
+        $messages = [];
         $client = null;
         $mailer = Mailer::newInstance(['newline' => "\n"]);
 
         if ($transport === 'mail') {
             $mailer->setTransport(new MailTransport(
                 new EmailValidator(),
-                static function (string $to, string $subject, string $message, string $headers) use (&$captured): bool {
-                    $captured = $headers;
+                static function (string $to, string $subject, string $message, string $headers) use (&$messages): bool {
+                    $messages[] = $headers;
 
                     return true;
                 },
@@ -109,79 +274,95 @@ final class RecipientHeaderMatrixTest extends TestCase
             $mailer->setTransport(new SendmailTransport(
                 '/usr/sbin/sendmail',
                 new EmailValidator(),
-                static function (string $command, string $message) use (&$captured): int {
-                    $captured = $message;
+                static function (string $command, string $message) use (&$messages): int {
+                    $messages[] = $message;
 
                     return 0;
                 },
             ));
         } else {
-            $recipients = $header === 'To' || !$libraryWrites ? 1 : 2;
-            $replies = ["220 hi\r\n", "250 ehlo\r\n", "250 from\r\n"];
-            for ($i = 0; $i < $recipients; ++$i) {
-                $replies[] = "250 rcpt\r\n";
-            }
-            $client = new FakeSocketClient([...$replies, "354 data\r\n", "250 queued\r\n", "221 bye\r\n"]);
+            $client = new RespondingSocketClient();
             $mailer->setTransport(
                 new SmtpTransport($client, 'mx.example.com', 25, 5, '', false, '', '', false, false, true, 'localhost', "\n"),
             );
         }
 
-        $mailer->setFrom('s@example.com')->setSubject('Subject')->setMessage('Body');
+        $mailer->setFrom('s@x.com')->setSubject('S')->setMessage('B');
         if ($header === 'To') {
-            $libraryWrites ? $mailer->setTo('t@x.com') : $mailer->setBCC('b@x.com');
+            if ($libraryWrites) {
+                $mailer->setTo('t@x.com');
+            } elseif (!$batch) {
+                $mailer->setBCC('b@x.com');
+            }
         } else {
             $mailer->setTo('t@x.com');
-            if ($libraryWrites) {
-                $header === 'Cc' ? $mailer->setCC('c@x.com') : $mailer->setBCC('b@x.com');
+            if ($header === 'Cc' && $libraryWrites) {
+                $mailer->setCC('c@x.com');
             }
+            if ($header === 'Bcc' && $libraryWrites && !$batch) {
+                $mailer->setBCC('b@x.com');
+            }
+        }
+        if ($batch) {
+            $mailer->setBCC(['b1@x.com', 'b2@x.com', 'b3@x.com'], 2);
         }
         $mailer->setHeader($customName, 'custom@co.example');
         $mailer->send();
 
         if ($client !== null) {
-            $captured = $client->conversation();
+            $messages = $client->conversations();
         }
 
-        $lines = array_map('rtrim', array_values(array_filter(
-            explode("\n", $captured),
-            static fn(string $line): bool => preg_match('/^(to|cc|bcc):/i', $line) === 1,
-        )));
-        sort($lines);
+        $actual = array_map(static function (string $message): array {
+            $lines = array_map('rtrim', array_values(array_filter(
+                explode("\n", $message),
+                static fn(string $line): bool => preg_match('/^\s*(to|cc|bcc)\s*:/i', $line) === 1,
+            )));
+            sort($lines);
 
-        self::assertSame($expected, $lines);
+            return $lines;
+        }, $messages);
+
+        self::assertSame($expected, $actual);
     }
 
     /**
-     * Compares the two recorded columns (it does not run the mailer) and allows
-     * the difference from 3.0.0 to be only of the two intended kinds, so a changed
-     * expectation that drops or adds anything else shows up here.
+     * Compares the two recorded columns (it does not run the mailer): `To` rows
+     * must be identical to 3.0.0, and for `Cc` and `Bcc` the only line that may
+     * be missing is the custom header's own, and only where the library writes
+     * that header.
      *
      * @dataProvider matrix
      *
-     * @param list<string> $expected
-     * @param list<string> $expectedBase
+     * @param list<list<string>> $expected
+     * @param list<list<string>> $expectedBase
      */
     public function testTheOutputDiffersFromThe300OutputOnlyWhereIntended(
         string $transport,
         string $header,
         bool $libraryWrites,
+        bool $batch,
         string $customName,
         array $expected,
         array $expectedBase,
     ): void {
-        $removed = array_diff($expectedBase, $expected);
-        $added = array_diff($expected, $expectedBase);
-        $customLine = $customName . ': custom@co.example';
+        if ($header === 'To') {
+            self::assertSame($expectedBase, $expected, 'A custom To must behave exactly as in 3.0.0.');
 
-        // Only the custom header's own line may disappear, and only when the
-        // library writes that header (it used to come out as a duplicate)...
-        $mayRemove = $libraryWrites ? [$customLine] : [];
-        // ...and the only line that may appear is a custom To that 3.0.0 lost on
-        // sendmail and SMTP although the library wrote no To.
-        $mayAdd = $header === 'To' && !$libraryWrites && $transport !== 'mail' ? [$customLine] : [];
+            return;
+        }
 
-        self::assertSame([], array_values(array_diff($removed, $mayRemove)), 'Unexpected line removed.');
-        self::assertSame([], array_values(array_diff($added, $mayAdd)), 'Unexpected line added.');
+        self::assertCount(count($expectedBase), $expected);
+        foreach ($expectedBase as $index => $baseLines) {
+            self::assertSame(
+                [],
+                array_values(array_diff($expected[$index], $baseLines)),
+                'No line may appear that 3.0.0 did not write.',
+            );
+            foreach (array_diff($baseLines, $expected[$index]) as $removed) {
+                self::assertStringEndsWith(': custom@co.example', $removed);
+                self::assertTrue($libraryWrites, 'A custom header the library does not write must not be removed.');
+            }
+        }
     }
 }

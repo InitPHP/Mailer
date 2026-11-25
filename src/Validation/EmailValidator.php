@@ -66,6 +66,8 @@ final class EmailValidator
      * Whether the value contains a CR, LF or NUL character. Such a character
      * ends a header line or an SMTP command, so it must never reach either; the
      * check does not depend on the `validate` option.
+     *
+     * @internal Shared by the library's own classes; not a public extension point.
      */
     public static function hasLineBreakOrNul(string $value): bool
     {
@@ -76,6 +78,8 @@ final class EmailValidator
      * Whether the address contains a character that would end or extend an SMTP
      * path or a header line: CR, LF, NUL, `<` or `>`. An address that has one
      * could add parameters (`<a@b.c> SIZE=1`) to `MAIL FROM` / `RCPT TO`.
+     *
+     * @internal Shared by the library's own classes; not a public extension point.
      */
     public static function hasUnsafeAddressChar(string $value): bool
     {
@@ -85,6 +89,8 @@ final class EmailValidator
     /**
      * Throws when any address contains a character that {@see hasUnsafeAddressChar()}
      * reports. Checked whether or not address validation is on.
+     *
+     * @internal Shared by the library's own classes; not a public extension point.
      *
      * @param iterable<string> $emails
      *
