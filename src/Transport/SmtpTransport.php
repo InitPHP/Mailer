@@ -187,7 +187,16 @@ final class SmtpTransport implements TransportInterface
             throw new TransportException('SMTP AUTH LOGIN was rejected: ' . trim($reply), $this->code($reply));
         }
 
-        $this->command(base64_encode($this->user), 334);
+        // The username and password steps are written by hand, not through
+        // command(), so the base64 credential never reaches an exception message.
+        $this->client->write(base64_encode($this->user) . $this->newline);
+        $reply = $this->readReply();
+        if (strncmp($reply, '334', 3) !== 0) {
+            throw new TransportException(
+                'SMTP AUTH LOGIN username step was rejected: ' . trim($reply),
+                $this->code($reply),
+            );
+        }
 
         $this->client->write(base64_encode($this->pass) . $this->newline);
         $reply = $this->readReply();
@@ -201,7 +210,16 @@ final class SmtpTransport implements TransportInterface
     private function finish(): void
     {
         if ($this->keepAlive) {
-            $this->command('RSET', 250);
+            // The message has already been accepted (250). If the reset fails,
+            // the conversation state is unknown, so the connection is dropped,
+            // but the send itself succeeded: throwing here would make a caller
+            // that retries deliver the message twice. The next send() opens a
+            // fresh connection.
+            try {
+                $this->command('RSET', 250);
+            } catch (Throwable) {
+                $this->disconnect();
+            }
 
             return;
         }

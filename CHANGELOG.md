@@ -4,6 +4,18 @@ All notable changes to `initphp/mailer` are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- With `SMTPKeepAlive` on, a refused `RSET` after the server accepted the message
+  no longer makes `send()` throw. The message was delivered, so an exception led a
+  retrying caller to send it twice. The connection is closed and the next `send()`
+  opens a new one.
+- A rejected `AUTH LOGIN` username step now throws a `TransportException` with
+  the message `SMTP AUTH LOGIN username step was rejected: <reply>`. The message
+  used to contain the base64-encoded username.
+
 ## [3.1.0] - 2026-11-25
 
 ### Security

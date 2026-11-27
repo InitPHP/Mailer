@@ -411,6 +411,45 @@ final class SmtpTransportTest extends TestCase
         $this->assertSame(2, substr_count($client->conversation(), 'AUTH LOGIN'));
     }
 
+    public function testAFailedResetAfterAnAcceptedMessageDoesNotFailTheSend(): void
+    {
+        $client = new FakeSocketClient([
+            // First send: the message is queued, then RSET is refused.
+            "220 hi\r\n", "250 ehlo\r\n", "250 from\r\n", "250 rcpt\r\n", "354 data\r\n", "250 queued\r\n", "500 what\r\n",
+            // Second send: a fresh session.
+            "220 hi\r\n", "250 ehlo\r\n", "250 from\r\n", "250 rcpt\r\n", "354 data\r\n", "250 queued\r\n", "250 reset\r\n",
+        ]);
+        $transport = $this->transport($client, keepAlive: true);
+
+        $transport->send($this->email());
+
+        $this->assertFalse($client->isOpen());
+        $this->assertSame(1, $client->openCount);
+
+        $transport->send($this->email());
+
+        $this->assertTrue($client->isOpen());
+        $this->assertSame(2, $client->openCount);
+        $this->assertSame(2, substr_count($client->conversation(), 'DATA'));
+    }
+
+    public function testARejectedAuthUsernameStepDoesNotLeakTheBase64UsernameInTheMessage(): void
+    {
+        $client = new FakeSocketClient(["220 hi\r\n", "250 ehlo\r\n", "334 VXNlcm5hbWU6\r\n", "535 no such user\r\n"]);
+        $transport = $this->transport($client, auth: true, user: 'user@example.com', pass: 'secret');
+
+        try {
+            $transport->send($this->email());
+            $this->fail('Expected a TransportException.');
+        } catch (TransportException $e) {
+            $this->assertSame(535, $e->getCode());
+            $this->assertStringContainsString('username step was rejected', $e->getMessage());
+            $this->assertStringContainsString('no such user', $e->getMessage());
+            $this->assertStringNotContainsString(base64_encode('user@example.com'), $e->getMessage());
+            $this->assertFalse($client->isOpen());
+        }
+    }
+
     public function testTheOrcptParameterIsXtextEncodedSoAnAddressCannotAddParameters(): void
     {
         $client = new FakeSocketClient([
