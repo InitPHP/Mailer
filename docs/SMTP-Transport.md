@@ -79,7 +79,10 @@ $mailer = Mailer::newInstance([
 With `'SMTPKeepAlive' => true` the connection is reused between messages — an
 `RSET` is sent instead of `QUIT`, and authentication happens only once. This
 avoids the connect/handshake cost when sending many messages in a loop. The
-connection is closed when the mailer is garbage-collected.
+connection is closed when the mailer is garbage-collected. If the server
+refuses the `RSET` after it has accepted the message, `send()` still succeeds (the
+message was delivered); the connection is closed and the next `send()` opens a new
+one.
 
 If a send fails at any point — the greeting or `EHLO` is refused, `STARTTLS` is
 refused or the TLS handshake fails, authentication or a recipient is rejected,
