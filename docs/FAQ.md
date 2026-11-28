@@ -99,5 +99,5 @@ Yes — every side effect is injectable. See [Testing](Testing.md).
 
 ### Which PHP versions are supported?
 
-PHP **8.2, 8.3, 8.4 and 8.5** are tested in CI, with `ext-mbstring`,
+PHP **8.2, 8.3, 8.4, 8.5 and 8.6** are tested in CI, with `ext-mbstring`,
 `ext-iconv` and `ext-fileinfo` enabled.
